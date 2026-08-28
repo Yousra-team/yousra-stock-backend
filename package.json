@@ -1,0 +1,26 @@
+{
+  "name": "yousra-stock-backend",
+  "version": "1.0.0",
+  "description": "",
+  "keywords": [
+    "stock"
+  ],
+  "homepage": "https://github.com/christchatchoua/yousra-stock-backend#readme",
+  "bugs": {
+    "url": "https://github.com/christchatchoua/yousra-stock-backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/christchatchoua/yousra-stock-backend.git"
+  },
+  "license": "ISC",
+  "author": "Yousra Company",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
