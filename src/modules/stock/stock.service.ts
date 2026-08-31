@@ -102,6 +102,8 @@ export async function listStockLevels(companyId: string, pagination: PaginationP
   const [items, { total }] = await Promise.all([
     db.orm.public.StockLevel
       .where((sl) => sl.warehouseId.in(warehouseIds))
+      .include('item', (it) => it.select('id', 'name'))
+      .include('warehouse', (w) => w.select('id', 'name'))
       .orderBy((sl) => sl.updatedAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -117,16 +119,28 @@ export async function getStockLevel(
   companyId: string,
   warehouseId: string,
   itemId: string,
-): Promise<StockLevelRow | { itemId: string; warehouseId: string; quantity: string }> {
-  await getWarehouseById(companyId, warehouseId);
-  await getItemById(companyId, itemId);
+) {
+  const warehouse = await getWarehouseById(companyId, warehouseId);
+  const item = await getItemById(companyId, itemId);
 
   const level = await db.orm.public.StockLevel
     .where((sl) => sl.warehouseId.eq(warehouseId))
     .where((sl) => sl.itemId.eq(itemId))
+    .include('item', (it) => it.select('id', 'name'))
+    .include('warehouse', (w) => w.select('id', 'name'))
     .first();
 
-  return level ?? { itemId, warehouseId, quantity: '0' };
+  // A pair with no movements yet has no row — return a synthetic zero level with
+  // the same populated shape as a real one.
+  return (
+    level ?? {
+      itemId,
+      warehouseId,
+      quantity: '0',
+      item: { id: item.id, name: item.name },
+      warehouse: { id: warehouse.id, name: warehouse.name },
+    }
+  );
 }
 
 export async function listStockMovements(companyId: string, pagination: PaginationParams) {
@@ -138,6 +152,12 @@ export async function listStockMovements(companyId: string, pagination: Paginati
   const [items, { total }] = await Promise.all([
     db.orm.public.StockMovement
       .where((sm) => sm.warehouseId.in(warehouseIds))
+      .include('item', (it) => it.select('id', 'name'))
+      .include('warehouse', (w) => w.select('id', 'name'))
+      .include('creator', (u) => u.select('employeeId', 'firstName', 'lastName'))
+      .include('nomenclature', (n) => n.select('id', 'version', 'isActive'))
+      .include('receiptItem', (ri) => ri.select('id', 'itemId'))
+      .include('transferItem', (ti) => ti.select('id', 'itemId'))
       .orderBy((sm) => sm.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -151,7 +171,15 @@ export async function listStockMovements(companyId: string, pagination: Paginati
 }
 
 export async function getStockMovementById(companyId: string, id: string): Promise<StockMovementRow> {
-  const movement = await db.orm.public.StockMovement.where((sm) => sm.id.eq(id)).first();
+  const movement = await db.orm.public.StockMovement
+    .where((sm) => sm.id.eq(id))
+    .include('item', (it) => it.select('id', 'name'))
+    .include('warehouse', (w) => w.select('id', 'name'))
+    .include('creator', (u) => u.select('employeeId', 'firstName', 'lastName'))
+    .include('nomenclature', (n) => n.select('id', 'version', 'isActive'))
+    .include('receiptItem', (ri) => ri.select('id', 'itemId'))
+    .include('transferItem', (ti) => ti.select('id', 'itemId'))
+    .first();
   if (!movement) {
     throw new NotFoundError('Stock movement not found');
   }

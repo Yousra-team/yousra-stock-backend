@@ -30,6 +30,9 @@ export async function listItems(companyId: string, pagination: PaginationParams)
     db.orm.public.Item
       .where((i) => i.companyId.eq(companyId))
       .where((i) => i.deletedAt.isNull())
+      .include('category', (c) => c.select('id', 'name'))
+      .include('baseUnit', (u) => u.select('id', 'name', 'symbol'))
+      .include('company', (co) => co.select('id', 'name'))
       .orderBy((i) => i.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -48,6 +51,9 @@ export async function getItemById(companyId: string, id: string): Promise<ItemRo
     .where((i) => i.id.eq(id))
     .where((i) => i.companyId.eq(companyId))
     .where((i) => i.deletedAt.isNull())
+    .include('category', (c) => c.select('id', 'name'))
+    .include('baseUnit', (u) => u.select('id', 'name', 'symbol'))
+    .include('company', (co) => co.select('id', 'name'))
     .first();
 
   if (!item) {

@@ -25,6 +25,12 @@ export async function listInvoices(companyId: string, pagination: PaginationPara
   const [items, { total }] = await Promise.all([
     db.orm.public.Invoice
       .where((inv) => inv.goodsReceiptId.in(receiptIds))
+      .include('goodsReceipt', (gr) =>
+        gr
+          .select('id', 'status', 'receivedAt')
+          .include('supplier', (s) => s.select('id', 'name'))
+          .include('warehouse', (w) => w.select('id', 'name')),
+      )
       .orderBy((inv) => inv.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -36,7 +42,15 @@ export async function listInvoices(companyId: string, pagination: PaginationPara
 }
 
 export async function getInvoiceById(companyId: string, id: string): Promise<InvoiceRow> {
-  const invoice = await db.orm.public.Invoice.where((inv) => inv.id.eq(id)).first();
+  const invoice = await db.orm.public.Invoice
+    .where((inv) => inv.id.eq(id))
+    .include('goodsReceipt', (gr) =>
+      gr
+        .select('id', 'status', 'receivedAt')
+        .include('supplier', (s) => s.select('id', 'name'))
+        .include('warehouse', (w) => w.select('id', 'name')),
+    )
+    .first();
   if (!invoice) {
     throw new NotFoundError('Invoice not found');
   }

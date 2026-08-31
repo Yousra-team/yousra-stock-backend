@@ -1,5 +1,24 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { ZodType } from 'zod';
+import type { ZodError, ZodType } from 'zod';
+
+/** `["type: Invalid option ...", "isBase: expected boolean, received string"]` — readable per-field summary. */
+function summarize(error: ZodError): string {
+  const parts = error.issues.map((issue) => {
+    const path = issue.path.join('.');
+    return path ? `${path}: ${issue.message}` : issue.message;
+  });
+  return parts.length > 0 ? `Validation failed — ${parts.join('; ')}` : 'Validation failed';
+}
+
+function respondInvalid(res: Response, error: ZodError): void {
+  res.status(400).json({
+    error: {
+      message: summarize(error),
+      code: 'VALIDATION_ERROR',
+      details: error.flatten(),
+    },
+  });
+}
 
 /**
  * Validates `req.body` against `schema` with `safeParse` (runtime check —
@@ -12,13 +31,7 @@ export function validateBody(schema: ZodType) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
-      res.status(400).json({
-        error: {
-          message: 'Validation failed',
-          code: 'VALIDATION_ERROR',
-          details: result.error.flatten(),
-        },
-      });
+      respondInvalid(res, result.error);
       return;
     }
     req.body = result.data;
@@ -37,13 +50,7 @@ export function validateQuery(schema: ZodType) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.query);
     if (!result.success) {
-      res.status(400).json({
-        error: {
-          message: 'Validation failed',
-          code: 'VALIDATION_ERROR',
-          details: result.error.flatten(),
-        },
-      });
+      respondInvalid(res, result.error);
       return;
     }
     req.validatedQuery = result.data;

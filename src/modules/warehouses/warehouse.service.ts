@@ -16,6 +16,7 @@ export async function listWarehouses(companyId: string, pagination: PaginationPa
     db.orm.public.Warehouse
       .where((w) => w.companyId.eq(companyId))
       .where((w) => w.deletedAt.isNull())
+      .include('company', (c) => c.select('id', 'name'))
       .orderBy((w) => w.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -34,6 +35,7 @@ export async function getWarehouseById(companyId: string, id: string): Promise<W
     .where((w) => w.id.eq(id))
     .where((w) => w.companyId.eq(companyId))
     .where((w) => w.deletedAt.isNull())
+    .include('company', (c) => c.select('id', 'name'))
     .first();
 
   if (!warehouse) {

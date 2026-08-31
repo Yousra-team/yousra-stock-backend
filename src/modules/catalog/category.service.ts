@@ -16,6 +16,7 @@ export async function listCategories(companyId: string, pagination: PaginationPa
     db.orm.public.ItemCategory
       .where((c) => c.companyId.eq(companyId))
       .where((c) => c.deletedAt.isNull())
+      .include('company', (co) => co.select('id', 'name'))
       .orderBy((c) => c.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -34,6 +35,7 @@ export async function getCategoryById(companyId: string, id: string): Promise<Ca
     .where((c) => c.id.eq(id))
     .where((c) => c.companyId.eq(companyId))
     .where((c) => c.deletedAt.isNull())
+    .include('company', (co) => co.select('id', 'name'))
     .first();
 
   if (!category) {

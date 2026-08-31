@@ -80,7 +80,31 @@ const uuid = { type: 'string', format: 'uuid' } as const;
 const timestamp = { type: 'string', format: 'date-time' } as const;
 const decimal = { type: 'string', description: 'Decimal serialised as a string.', example: '12.5' } as const;
 
+/**
+ * Every list/detail GET eager-loads its foreign keys, so alongside each `xId`
+ * scalar the response also carries a nested object with the referenced row's
+ * label fields. These `*Ref` shapes are those nested objects.
+ */
+const ref = {
+  type: 'object',
+  nullable: true,
+  properties: { id: uuid, name: { type: 'string' } },
+} as const;
+const unitRef = {
+  type: 'object',
+  nullable: true,
+  properties: { id: uuid, name: { type: 'string' }, symbol: { type: 'string' } },
+} as const;
+const userRef = {
+  type: 'object',
+  nullable: true,
+  properties: { employeeId: uuid, firstName: { type: 'string' }, lastName: { type: 'string' } },
+} as const;
+
 const entitySchemas = {
+  Ref: ref,
+  UnitRef: unitRef,
+  UserRef: userRef,
   AuthResult: {
     type: 'object',
     properties: {
@@ -129,6 +153,7 @@ const entitySchemas = {
       email: { type: 'string', format: 'email' },
       type: { type: 'string', enum: ['COMPANY', 'INDIVIDUAL'] },
       companyId: uuid,
+      company: ref,
       deletedAt: { ...timestamp, nullable: true },
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -140,6 +165,7 @@ const entitySchemas = {
       id: uuid,
       name: { type: 'string' },
       companyId: uuid,
+      company: ref,
       deletedAt: { ...timestamp, nullable: true },
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -165,6 +191,7 @@ const entitySchemas = {
       id: uuid,
       name: { type: 'string' },
       companyId: uuid,
+      company: ref,
       deletedAt: { ...timestamp, nullable: true },
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -176,8 +203,11 @@ const entitySchemas = {
       id: uuid,
       name: { type: 'string' },
       categoryId: uuid,
+      category: ref,
       baseUnitId: uuid,
+      baseUnit: unitRef,
       companyId: uuid,
+      company: ref,
       isStockable: { type: 'boolean' },
       isBuyable: { type: 'boolean' },
       reorderThreshold: { ...decimal, nullable: true },
@@ -192,8 +222,10 @@ const entitySchemas = {
       id: uuid,
       nomenclatureId: uuid,
       subItemId: uuid,
+      subItem: ref,
       quantity: decimal,
       unitId: uuid,
+      unit: unitRef,
       createdAt: timestamp,
       updatedAt: timestamp,
     },
@@ -203,6 +235,7 @@ const entitySchemas = {
     properties: {
       id: uuid,
       itemId: uuid,
+      item: ref,
       isActive: { type: 'boolean' },
       version: { type: 'integer', example: 1 },
       notes: { type: 'string', nullable: true },
@@ -218,6 +251,7 @@ const entitySchemas = {
       id: uuid,
       purchaseOrderId: uuid,
       itemId: uuid,
+      item: ref,
       unitCost: decimal,
       quantity: decimal,
       createdAt: timestamp,
@@ -229,10 +263,13 @@ const entitySchemas = {
     properties: {
       id: uuid,
       supplierId: uuid,
+      supplier: ref,
       warehouseId: uuid,
+      warehouse: ref,
       expectedAt: timestamp,
       status: { type: 'string', enum: ['DRAFT', 'SENT', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'] },
       createdBy: uuid,
+      creator: userRef,
       items: { type: 'array', items: { $ref: '#/components/schemas/PurchaseOrderItem' } },
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -244,6 +281,7 @@ const entitySchemas = {
       id: uuid,
       receiptId: uuid,
       itemId: uuid,
+      item: ref,
       unitCost: decimal,
       quantity: decimal,
       status: { type: 'string', enum: ['RECEIVED'] },
@@ -256,6 +294,17 @@ const entitySchemas = {
     properties: {
       id: uuid,
       goodsReceiptId: uuid,
+      goodsReceipt: {
+        type: 'object',
+        nullable: true,
+        properties: {
+          id: uuid,
+          status: { type: 'string' },
+          receivedAt: timestamp,
+          supplier: ref,
+          warehouse: ref,
+        },
+      },
       invoiceNumber: { type: 'string', example: 'INV-2026-000042' },
       amount: decimal,
       currency: { type: 'string', example: 'XAF' },
@@ -269,11 +318,19 @@ const entitySchemas = {
     properties: {
       id: uuid,
       purchaseOrderId: uuid,
+      purchaseOrder: {
+        type: 'object',
+        nullable: true,
+        properties: { id: uuid, status: { type: 'string' } },
+      },
       supplierId: uuid,
+      supplier: ref,
       warehouseId: uuid,
+      warehouse: ref,
       receivedAt: timestamp,
       status: { type: 'string', enum: ['PARTIALLY_RECEIVED', 'RECEIVED'] },
       createdBy: uuid,
+      creator: userRef,
       items: { type: 'array', items: { $ref: '#/components/schemas/GoodsReceiptItem' } },
       invoice: { allOf: [{ $ref: '#/components/schemas/Invoice' }], nullable: true },
       createdAt: timestamp,
@@ -285,7 +342,9 @@ const entitySchemas = {
     properties: {
       id: uuid,
       itemId: uuid,
+      item: ref,
       warehouseId: uuid,
+      warehouse: ref,
       quantity: decimal,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -300,7 +359,9 @@ const entitySchemas = {
         enum: ['STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT'],
       },
       itemId: uuid,
+      item: ref,
       warehouseId: uuid,
+      warehouse: ref,
       quantity: { ...decimal, description: 'Always positive — direction is implied by `type`.' },
       reason: {
         type: 'string',
@@ -308,9 +369,25 @@ const entitySchemas = {
         nullable: true,
       },
       nomenclatureId: { ...uuid, nullable: true },
+      nomenclature: {
+        type: 'object',
+        nullable: true,
+        properties: { id: uuid, version: { type: 'integer' }, isActive: { type: 'boolean' } },
+      },
       receiptItemId: { ...uuid, nullable: true },
+      receiptItem: {
+        type: 'object',
+        nullable: true,
+        properties: { id: uuid, itemId: uuid },
+      },
       transferItemId: { ...uuid, nullable: true },
+      transferItem: {
+        type: 'object',
+        nullable: true,
+        properties: { id: uuid, itemId: uuid },
+      },
       createdBy: uuid,
+      creator: userRef,
       createdAt: timestamp,
       updatedAt: timestamp,
     },
@@ -323,6 +400,7 @@ const entitySchemas = {
       description: { type: 'string' },
       phone: { type: 'string' },
       companyId: uuid,
+      company: ref,
       deletedAt: { ...timestamp, nullable: true },
       createdAt: timestamp,
       updatedAt: timestamp,

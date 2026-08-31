@@ -88,6 +88,13 @@ export async function listNomenclature(
     db.orm.public.Nomenclature
       .where((n) => n.itemId.in(itemIds))
       .where((n) => n.deletedAt.isNull())
+      .include('item', (it) => it.select('id', 'name'))
+      .include('lines', (branch) =>
+        branch
+          .select('id', 'nomenclatureId', 'subItemId', 'quantity', 'unitId', 'createdAt', 'updatedAt')
+          .include('subItem', (si) => si.select('id', 'name'))
+          .include('unit', (u) => u.select('id', 'name', 'symbol')),
+      )
       .orderBy((n) => n.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -103,8 +110,12 @@ export async function listNomenclature(
 
 export async function getNomenclatureById(companyId: string, id: string): Promise<NomenclatureWithLines> {
   const nomenclature = await db.orm.public.Nomenclature
+    .include('item', (it) => it.select('id', 'name'))
     .include('lines', (branch) =>
-      branch.select('id', 'nomenclatureId', 'subItemId', 'quantity', 'unitId', 'createdAt', 'updatedAt'),
+      branch
+        .select('id', 'nomenclatureId', 'subItemId', 'quantity', 'unitId', 'createdAt', 'updatedAt')
+        .include('subItem', (si) => si.select('id', 'name'))
+        .include('unit', (u) => u.select('id', 'name', 'symbol')),
     )
     .where((n) => n.id.eq(id))
     .where((n) => n.deletedAt.isNull())

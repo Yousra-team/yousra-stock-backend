@@ -133,6 +133,18 @@ export async function listGoodsReceipts(companyId: string, pagination: Paginatio
   const [items, { total }] = await Promise.all([
     db.orm.public.GoodsReceipt
       .where((gr) => gr.supplierId.in(supplierIds))
+      .include('supplier', (s) => s.select('id', 'name'))
+      .include('warehouse', (w) => w.select('id', 'name'))
+      .include('creator', (u) => u.select('employeeId', 'firstName', 'lastName'))
+      .include('purchaseOrder', (po) => po.select('id', 'status'))
+      .include('items', (branch) =>
+        branch
+          .select('id', 'receiptId', 'itemId', 'unitCost', 'quantity', 'status', 'createdAt', 'updatedAt')
+          .include('item', (it) => it.select('id', 'name')),
+      )
+      .include('invoice', (inv) =>
+        inv.select('id', 'goodsReceiptId', 'invoiceNumber', 'amount', 'currency', 'issuedAt', 'createdAt', 'updatedAt'),
+      )
       .orderBy((gr) => gr.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -145,8 +157,14 @@ export async function listGoodsReceipts(companyId: string, pagination: Paginatio
 
 export async function getGoodsReceiptById(companyId: string, id: string): Promise<GoodsReceiptWithItems> {
   const receipt = await db.orm.public.GoodsReceipt
+    .include('supplier', (s) => s.select('id', 'name'))
+    .include('warehouse', (w) => w.select('id', 'name'))
+    .include('creator', (u) => u.select('employeeId', 'firstName', 'lastName'))
+    .include('purchaseOrder', (po) => po.select('id', 'status'))
     .include('items', (branch) =>
-      branch.select('id', 'receiptId', 'itemId', 'unitCost', 'quantity', 'status', 'createdAt', 'updatedAt'),
+      branch
+        .select('id', 'receiptId', 'itemId', 'unitCost', 'quantity', 'status', 'createdAt', 'updatedAt')
+        .include('item', (it) => it.select('id', 'name')),
     )
     .include('invoice', (branch) =>
       branch.select('id', 'goodsReceiptId', 'invoiceNumber', 'amount', 'currency', 'issuedAt', 'createdAt', 'updatedAt'),

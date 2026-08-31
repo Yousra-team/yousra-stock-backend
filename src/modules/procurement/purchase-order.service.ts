@@ -61,6 +61,14 @@ export async function listPurchaseOrders(companyId: string, pagination: Paginati
   const [orders, { total }] = await Promise.all([
     db.orm.public.PurchaseOrder
       .where((po) => po.supplierId.in(supplierIds))
+      .include('supplier', (s) => s.select('id', 'name'))
+      .include('warehouse', (w) => w.select('id', 'name'))
+      .include('creator', (u) => u.select('employeeId', 'firstName', 'lastName'))
+      .include('items', (branch) =>
+        branch
+          .select('id', 'purchaseOrderId', 'itemId', 'unitCost', 'quantity', 'createdAt', 'updatedAt')
+          .include('item', (it) => it.select('id', 'name')),
+      )
       .orderBy((po) => po.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -75,8 +83,13 @@ export async function listPurchaseOrders(companyId: string, pagination: Paginati
 
 export async function getPurchaseOrderById(companyId: string, id: string): Promise<PurchaseOrderWithItems> {
   const purchaseOrder = await db.orm.public.PurchaseOrder
+    .include('supplier', (s) => s.select('id', 'name'))
+    .include('warehouse', (w) => w.select('id', 'name'))
+    .include('creator', (u) => u.select('employeeId', 'firstName', 'lastName'))
     .include('items', (branch) =>
-      branch.select('id', 'purchaseOrderId', 'itemId', 'unitCost', 'quantity', 'createdAt', 'updatedAt'),
+      branch
+        .select('id', 'purchaseOrderId', 'itemId', 'unitCost', 'quantity', 'createdAt', 'updatedAt')
+        .include('item', (it) => it.select('id', 'name')),
     )
     .where((po) => po.id.eq(id))
     .first();

@@ -26,6 +26,7 @@ export async function listSuppliers(companyId: string, pagination: PaginationPar
     db.orm.public.Supplier
       .where((s) => s.companyId.eq(companyId))
       .where((s) => s.deletedAt.isNull())
+      .include('company', (c) => c.select('id', 'name'))
       .orderBy((s) => s.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
@@ -44,6 +45,7 @@ export async function getSupplierById(companyId: string, id: string): Promise<Su
     .where((s) => s.id.eq(id))
     .where((s) => s.companyId.eq(companyId))
     .where((s) => s.deletedAt.isNull())
+    .include('company', (c) => c.select('id', 'name'))
     .first();
 
   if (!supplier) {

@@ -57,6 +57,7 @@ export async function listExternalSystems(companyId: string, pagination: Paginat
     db.orm.public.ExternalSystem
       .where((es) => es.companyId.eq(companyId))
       .where((es) => es.deletedAt.isNull())
+      .include('company', (c) => c.select('id', 'name'))
       .orderBy((es) => es.createdAt.desc())
       .offset(pagination.skip)
       .limit(pagination.take)
