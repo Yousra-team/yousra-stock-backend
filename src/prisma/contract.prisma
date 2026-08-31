@@ -1,21 +1,603 @@
-// use prisma-next
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
 
-model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  username  String?
-  name      String?
-  posts     Post[]
-  createdAt TimestamptzString @default(now())
-  updatedAt temporal.updatedAtString()
+enum UserRole {
+  Admin
+  Manager
+  Staff
 }
 
-model Post {
-  id        Int      @id @default(autoincrement())
-  title     String
-  content   String?
-  author    User     @relation(fields: [authorId], references: [id])
-  authorId  Int
+enum SupplierType {
+  COMPANY
+  INDIVIDUAL
+}
+
+enum UnitFamily {
+  MASS
+  VOLUME
+  UNIT
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum GoodsReceiptStatus {
+  PARTIALLY_RECEIVED
+  RECEIVED
+}
+
+enum GoodsReceiptItemStatus {
+  RECEIVED
+}
+
+enum WarehouseTransferStatus {
+  PENDING
+  DISPATCHED
+  RECEIVED
+  DISCREPANCY
+}
+
+enum StockMovementType {
+  STOCK_IN
+  CONSUMPTION
+  MANUAL_OUT
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUSTMENT
+}
+
+enum StockMovementReason {
+  WASTE
+  SPOILAGE
+  INTERNAL_USE
+  THEFT
+  OTHER
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy & identity
+// ---------------------------------------------------------------------------
+
+/// Tenant entity (Yousra, Parcland, future brands).
+model Company {
+  id      Uuid   @id @default(uuid(7))
+  name    String
+  email   String
+  phone   String
+  address String
+  city    String
+  country String
+
   createdAt TimestamptzString @default(now())
   updatedAt temporal.updatedAtString()
+
+  users           User[]
+  externalSystems ExternalSystem[]
+  suppliers       Supplier[]
+  itemCategories  ItemCategory[]
+  items           Item[]
+  warehouses      Warehouse[]
+  @@rls
+}
+
+/// Deactivation strategy is still TBD with the team — deliberately no `deletedAt`.
+model User {
+  employeeId   Uuid     @id @default(uuid(7))
+  firstName    String
+  lastName     String
+  role         UserRole
+  email        String
+  phone        String
+  /// bcrypt hash — never the plaintext password, never returned by any endpoint.
+  passwordHash String
+
+  companyId Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  purchaseOrders     PurchaseOrder[]
+  goodsReceipts      GoodsReceipt[]
+  warehouseTransfers WarehouseTransfer[]
+  stockMovements     StockMovement[]
+
+  @@unique([companyId, email])
+  @@index([companyId])
+  @@rls
+}
+
+/// An API consumer: Pizzaland, Finance, etc.
+/// Plaintext key/secret are returned once at creation or rotation, never persisted.
+model ExternalSystem {
+  id            Uuid   @id @default(uuid(7))
+  name          String
+  description   String
+  apiKeyHash    String @unique
+  apiSecretHash String
+  phone         String
+
+  companyId Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  /// "Revoke" sets this.
+  deletedAt TimestamptzString?
+  createdAt TimestamptzString  @default(now())
+  updatedAt temporal.updatedAtString()
+
+  @@index([companyId])
+  @@rls
+}
+
+// ---------------------------------------------------------------------------
+// Reference / catalog
+// ---------------------------------------------------------------------------
+
+model Supplier {
+  id          Uuid         @id @default(uuid(7))
+  name        String
+  country     String
+  city        String
+  address     String
+  description String?
+  phone       String
+  email       String
+  type        SupplierType
+
+  companyId Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  deletedAt TimestamptzString?
+  createdAt TimestamptzString  @default(now())
+  updatedAt temporal.updatedAtString()
+
+  purchaseOrders PurchaseOrder[]
+  goodsReceipts  GoodsReceipt[]
+
+  @@index([companyId])
+  @@rls
+}
+
+/// Global reference data — deliberately not tenant-owned, so no `companyId`.
+/// Conversion is only valid between units of the same `family`.
+model Unit {
+  id     Uuid       @id @default(uuid(7))
+  name   String
+  symbol String
+  family UnitFamily
+
+  /// Ratio to the family's base unit.
+  factorToBase Decimal
+  /// Exactly one base unit per family — enforced by `unit_one_base_per_family`.
+  isBase       Boolean
+
+  deletedAt TimestamptzString?
+  createdAt TimestamptzString  @default(now())
+  updatedAt temporal.updatedAtString()
+
+  items             Item[]
+  nomenclatureLines NomenclatureLine[]
+
+  @@index([family], unique: true, where: "(\"isBase\" = true AND \"deletedAt\" IS NULL)", name: "unit_one_base_per_family")
+  @@rls
+}
+
+model ItemCategory {
+  id   Uuid   @id @default(uuid(7))
+  name String
+
+  companyId Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  deletedAt TimestamptzString?
+  createdAt TimestamptzString  @default(now())
+  updatedAt temporal.updatedAtString()
+
+  items Item[]
+
+  @@index([companyId])
+  @@rls
+}
+
+/// A catalog entry. Deliberately NOT tied to a warehouse — location and
+/// quantity live entirely in `StockLevel`.
+model Item {
+  id   Uuid   @id @default(uuid(7))
+  name String
+
+  categoryId Uuid
+  category   ItemCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  baseUnitId Uuid
+  baseUnit   Unit @relation(fields: [baseUnitId], references: [id], onDelete: Restrict)
+
+  companyId Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  isStockable Boolean
+  isBuyable   Boolean
+  /// Low-stock alert threshold. Null means "no alerting for this item".
+  reorderThreshold Decimal?
+
+  deletedAt TimestamptzString?
+  createdAt TimestamptzString  @default(now())
+  updatedAt temporal.updatedAtString()
+
+  nomenclature           Nomenclature[]           @relation("ItemNomenclature")
+  nomenclatureSubItemOf  NomenclatureLine[]
+  purchaseOrderItems     PurchaseOrderItem[]
+  goodsReceiptItems      GoodsReceiptItem[]
+  warehouseTransferItems WarehouseTransferItem[]
+  stockLevels            StockLevel[]
+  stockMovements         StockMovement[]
+
+  @@index([companyId])
+  @@index([categoryId])
+  @@index([baseUnitId])
+  @@rls
+}
+
+// ---------------------------------------------------------------------------
+// Nomenclature (bill of materials)
+// ---------------------------------------------------------------------------
+
+/// A recipe version: which sub-items and quantities constitute an item.
+/// Editing an active version's lines is not allowed — a recipe change means a
+/// new `Nomenclature` row, so historical `StockMovement` deductions stay
+/// accurate. Activation is a dedicated operation, not a plain field PATCH.
+model Nomenclature {
+  id Uuid @id @default(uuid(7))
+
+  itemId Uuid
+  item   Item @relation("ItemNomenclature", fields: [itemId], references: [id], onDelete: Restrict)
+
+  /// At most one active version per `itemId`.
+  isActive Boolean
+  /// Incremented per `itemId` by the application on create.
+  version  Int
+  notes    String?
+
+  /// The active version cannot be soft-deleted (application rule).
+  deletedAt TimestamptzString?
+  createdAt TimestamptzString  @default(now())
+  updatedAt temporal.updatedAtString()
+
+  lines          NomenclatureLine[]
+  stockMovements StockMovement[]
+
+  @@unique([itemId, version])
+  @@index([itemId])
+  @@index([itemId], unique: true, where: "(\"isActive\" = true AND \"deletedAt\" IS NULL)", name: "nomenclature_one_active_per_item")
+  @@rls
+}
+
+model NomenclatureLine {
+  id Uuid @id @default(uuid(7))
+
+  nomenclatureId Uuid
+  nomenclature   Nomenclature @relation(fields: [nomenclatureId], references: [id], onDelete: Cascade)
+
+  subItemId Uuid
+  subItem   Item @relation(fields: [subItemId], references: [id], onDelete: Restrict)
+
+  quantity Decimal
+
+  unitId Uuid
+  unit   Unit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  @@unique([nomenclatureId, subItemId])
+  @@index([nomenclatureId])
+  @@index([subItemId])
+  @@rls
+}
+
+// ---------------------------------------------------------------------------
+// Warehouses
+// ---------------------------------------------------------------------------
+
+model Warehouse {
+  id   Uuid   @id @default(uuid(7))
+  name String
+
+  companyId Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  deletedAt TimestamptzString?
+  createdAt TimestamptzString  @default(now())
+  updatedAt temporal.updatedAtString()
+
+  purchaseOrders PurchaseOrder[]
+  goodsReceipts  GoodsReceipt[]
+  transfersFrom  WarehouseTransfer[] @relation("TransferFrom")
+  transfersTo    WarehouseTransfer[] @relation("TransferTo")
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
+
+  @@index([companyId])
+  @@rls
+}
+
+// ---------------------------------------------------------------------------
+// Procurement
+// ---------------------------------------------------------------------------
+
+/// Transactional — no `deletedAt`. Cancelling sets `status = CANCELLED`.
+model PurchaseOrder {
+  id Uuid @id @default(uuid(7))
+
+  supplierId Uuid
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  warehouseId Uuid
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  expectedAt TimestamptzString
+  status     PurchaseOrderStatus
+
+  /// Server-derived from the authenticated user.
+  createdBy Uuid
+  creator   User @relation(fields: [createdBy], references: [employeeId], onDelete: Restrict)
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  items         PurchaseOrderItem[]
+  goodsReceipts GoodsReceipt[]
+
+  @@index([supplierId])
+  @@index([warehouseId])
+  @@index([status])
+  @@rls
+}
+
+model PurchaseOrderItem {
+  id Uuid @id @default(uuid(7))
+
+  purchaseOrderId Uuid
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  itemId Uuid
+  item   Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  /// Ordered price and quantity — both Decimal (an early draft typed these as dates).
+  unitCost Decimal
+  quantity Decimal
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  @@unique([purchaseOrderId, itemId])
+  @@index([purchaseOrderId])
+  @@index([itemId])
+  @@check(expression: "\"quantity\" > 0", name: "po_item_quantity_positive")
+  @@rls
+}
+
+/// Fulfillment of a PurchaseOrder; supports partial delivery.
+/// The `purchaseOrderId` FK is what makes the procurement chain traceable
+/// end to end — do not drop it.
+model GoodsReceipt {
+  id Uuid @id @default(uuid(7))
+
+  purchaseOrderId Uuid
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+
+  supplierId Uuid
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  warehouseId Uuid
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  receivedAt TimestamptzString
+  status     GoodsReceiptStatus
+
+  createdBy Uuid
+  creator   User @relation(fields: [createdBy], references: [employeeId], onDelete: Restrict)
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  items   GoodsReceiptItem[]
+  invoice Invoice?
+
+  @@index([purchaseOrderId])
+  @@index([supplierId])
+  @@index([warehouseId])
+  @@rls
+}
+
+/// Creating one of these increments `StockLevel`, appends a `STOCK_IN`
+/// `StockMovement`, auto-generates an `Invoice`, and updates the parent
+/// `PurchaseOrder.status` — all application logic, not schema.
+model GoodsReceiptItem {
+  id Uuid @id @default(uuid(7))
+
+  receiptId Uuid
+  receipt   GoodsReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+
+  itemId Uuid
+  item   Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  /// Price actually paid — this is what makes supplier price-trend queries
+  /// possible without an extra table.
+  unitCost Decimal
+  /// Actual received quantity; may differ from `PurchaseOrderItem.quantity`.
+  quantity Decimal
+  status   GoodsReceiptItemStatus
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  stockMovements StockMovement[]
+
+  @@index([receiptId])
+  @@index([itemId])
+  @@check(expression: "\"quantity\" > 0", name: "receipt_item_quantity_positive")
+  @@rls
+}
+
+/// Read-only from the API — always auto-generated on goods receipt.
+model Invoice {
+  id Uuid @id @default(uuid(7))
+
+  goodsReceiptId Uuid         @unique
+  goodsReceipt   GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Restrict)
+
+  invoiceNumber String  @unique
+  amount        Decimal
+  /// ISO 4217 code, e.g. "XAF".
+  currency      String
+  issuedAt      TimestamptzString
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+  @@rls
+}
+
+// ---------------------------------------------------------------------------
+// Warehouse transfers (schema now; the dispatch/receive workflow is V2)
+// ---------------------------------------------------------------------------
+
+model WarehouseTransfer {
+  id Uuid @id @default(uuid(7))
+
+  fromWarehouseId Uuid
+  fromWarehouse   Warehouse @relation("TransferFrom", fields: [fromWarehouseId], references: [id], onDelete: Restrict)
+
+  toWarehouseId Uuid
+  toWarehouse   Warehouse @relation("TransferTo", fields: [toWarehouseId], references: [id], onDelete: Restrict)
+
+  status WarehouseTransferStatus
+  date   TimestamptzString
+
+  createdBy Uuid
+  creator   User @relation(fields: [createdBy], references: [employeeId], onDelete: Restrict)
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  items WarehouseTransferItem[]
+
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@index([status])
+  @@check(expression: "\"fromWarehouseId\" <> \"toWarehouseId\"", name: "transfer_distinct_warehouses")
+  @@rls
+}
+
+model WarehouseTransferItem {
+  id Uuid @id @default(uuid(7))
+
+  transferId Uuid
+  transfer   WarehouseTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  itemId Uuid
+  item   Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  quantity Decimal
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  stockMovements StockMovement[]
+
+  @@unique([transferId, itemId])
+  @@index([transferId])
+  @@index([itemId])
+  @@check(expression: "\"quantity\" > 0", name: "transfer_item_quantity_positive")
+  @@rls
+}
+
+// ---------------------------------------------------------------------------
+// Stock
+// ---------------------------------------------------------------------------
+
+/// Derived read model: current quantity per item per warehouse. Never written
+/// to directly — maintained by `StockMovement` side effects.
+/// No monetary `value` column: it is derivable from `quantity * latest unitCost`,
+/// and storing it would go stale.
+model StockLevel {
+  id Uuid @id @default(uuid(7))
+
+  itemId Uuid
+  item   Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  warehouseId Uuid
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  quantity Decimal
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  @@unique([itemId, warehouseId])
+  @@index([warehouseId])
+  @@rls
+}
+
+/// The traceability backbone: an append-only log of every stock-affecting
+/// action. This replaces any separate "InventoryReport" table — reports are
+/// just queries over this log. Rows are never edited or deleted; a correction
+/// is a new `ADJUSTMENT` row.
+///
+/// `quantity` is ALWAYS POSITIVE — direction is implied by `type`:
+///   STOCK_IN / TRANSFER_IN increase the level,
+///   CONSUMPTION / MANUAL_OUT / TRANSFER_OUT decrease it,
+///   ADJUSTMENT sets the correction delta (sign carried by the application).
+///
+/// Exactly one of `nomenclatureId` / `receiptItemId` / `transferItemId` is set,
+/// selected by `type`. Three nullable FKs rather than a polymorphic
+/// association — Postgres and Prisma handle this better at this scale.
+model StockMovement {
+  id Uuid @id @default(uuid(7))
+
+  type StockMovementType
+
+  itemId Uuid
+  item   Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  warehouseId Uuid
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  quantity Decimal
+
+  /// Required only when `type = MANUAL_OUT`.
+  reason StockMovementReason?
+
+  /// Set when `type = CONSUMPTION`.
+  nomenclatureId Uuid?
+  nomenclature   Nomenclature? @relation(fields: [nomenclatureId], references: [id], onDelete: Restrict)
+
+  /// Set when `type = STOCK_IN`.
+  receiptItemId Uuid?
+  receiptItem   GoodsReceiptItem? @relation(fields: [receiptItemId], references: [id], onDelete: Restrict)
+
+  /// Set when `type = TRANSFER_IN` or `TRANSFER_OUT`.
+  transferItemId Uuid?
+  transferItem   WarehouseTransferItem? @relation(fields: [transferItemId], references: [id], onDelete: Restrict)
+
+  /// The acting user. Movements originating from an `ExternalSystem` are
+  /// attributed to that system's service user — pending confirmation.
+  createdBy Uuid
+  creator   User @relation(fields: [createdBy], references: [employeeId], onDelete: Restrict)
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  @@index([itemId, warehouseId])
+  @@index([warehouseId])
+  @@index([type])
+  @@check(expression: "\"quantity\" > 0", name: "movement_quantity_positive")
+  @@check(expression: "((\"type\" = 'MANUAL_OUT') = (\"reason\" IS NOT NULL))", name: "movement_reason_only_for_manual_out")
+  @@check(expression: "(((\"nomenclatureId\" IS NOT NULL)::int + (\"receiptItemId\" IS NOT NULL)::int + (\"transferItemId\" IS NOT NULL)::int) <= 1)", name: "movement_at_most_one_source")
+  @@rls
 }

@@ -7,3 +7,6 @@ export const db = postgres<Contract>({
   contractJson,
   url: process.env['DATABASE_URL']!,
 });
+
+/** The `tx` context handed to `db.transaction(async (tx) => ...)` callbacks — derived from `db` itself so it can never drift from the real runtime type. */
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];

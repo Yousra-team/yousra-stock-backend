@@ -65,12 +65,17 @@ Relations: has many `User`, `Supplier`, `ItemCategory`, `Warehouse`, `Item`,
 | role | Enum(`Admin`, `Manager`, `Staff`) | |
 | email | String | |
 | phone | String | |
+| passwordHash | String | bcrypt hash; plaintext `password` is accepted on register but never stored/returned |
 | companyId | String | FK → Company |
 | createdAt / updatedAt | DateTime | |
 
 No `deletedAt` on User for now — deactivation strategy TBD with the team
 (auth/permissions discussion is paused). Don't add soft delete here unless
 told to.
+
+Auth decision (2026-08-30): password + JWT, not passwordless/magic-link.
+`POST /auth/user` accepts `password`, hashes it into `passwordHash`.
+`POST /auth/login` verifies email+password and issues a JWT.
 
 ---
 
