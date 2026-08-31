@@ -22,7 +22,8 @@
   },
   "scripts": {
     "dev": "doppler run -- tsx watch src/index.ts",
-    "start": "doppler run -- tsx src/index.ts",
+    "start": "tsx src/index.ts",
+    "start:doppler": "doppler run -- tsx src/index.ts",
     "serve": "tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test": "doppler run -- vitest run",
