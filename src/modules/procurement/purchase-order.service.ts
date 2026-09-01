@@ -1,6 +1,7 @@
 import { db } from '../../prisma/db';
 import type { FieldOutputTypes } from '../../prisma/contract.d';
 import { ConflictError, NotFoundError } from '../../shared/errors';
+import { allocateDocumentReference } from '../../shared/documentNumber';
 import { buildMeta, type PaginationParams } from '../../shared/pagination';
 import { getSupplierById } from '../suppliers';
 import { getWarehouseById } from '../warehouses';
@@ -26,6 +27,7 @@ export async function createPurchaseOrder(
 
   return db.transaction(async (tx) => {
     const purchaseOrder = await tx.orm.public.PurchaseOrder.create({
+      reference: await allocateDocumentReference(tx, 'PO'),
       supplierId: input.supplierId,
       warehouseId: input.warehouseId,
       expectedAt: input.expectedAt,

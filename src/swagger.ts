@@ -262,6 +262,12 @@ const entitySchemas = {
     type: 'object',
     properties: {
       id: uuid,
+      reference: {
+        type: 'string',
+        nullable: true,
+        description: 'Human-readable document number. Null only on rows created before this field existed.',
+        example: 'PO-26-09-01-001',
+      },
       supplierId: uuid,
       supplier: ref,
       warehouseId: uuid,
@@ -305,7 +311,11 @@ const entitySchemas = {
           warehouse: ref,
         },
       },
-      invoiceNumber: { type: 'string', example: 'INV-2026-000042' },
+      invoiceNumber: {
+        type: 'string',
+        description: 'Human-readable invoice number. Rows created before this format shipped keep their legacy `INV-<uuid>` value.',
+        example: 'INV-26-09-01-001',
+      },
       amount: decimal,
       currency: { type: 'string', example: 'XAF' },
       issuedAt: timestamp,
@@ -317,6 +327,12 @@ const entitySchemas = {
     type: 'object',
     properties: {
       id: uuid,
+      reference: {
+        type: 'string',
+        nullable: true,
+        description: 'Human-readable document number. Null only on rows created before this field existed.',
+        example: 'GR-26-09-01-001',
+      },
       purchaseOrderId: uuid,
       purchaseOrder: {
         type: 'object',
@@ -354,6 +370,12 @@ const entitySchemas = {
     type: 'object',
     properties: {
       id: uuid,
+      reference: {
+        type: 'string',
+        nullable: true,
+        description: 'Human-readable document number. Null only on rows created before this field existed.',
+        example: 'SM-26-09-01-001',
+      },
       type: {
         type: 'string',
         enum: ['STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT'],

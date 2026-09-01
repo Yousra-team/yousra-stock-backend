@@ -38,6 +38,50 @@ describe('measurements (units)', () => {
 
     const deleted = await client.delete(`/api/v1/measurements/units/${unitId}`);
     expect(deleted.status).toBe(204);
+
+    // Soft delete must remove the unit from every read path so the client
+    // dropdown stops offering it.
+    const listAfter = await client.get('/api/v1/measurements/units?page=1&pageSize=100');
+    expect(listAfter.body.data.some((u: { id: string }) => u.id === unitId)).toBe(false);
+
+    const getAfter = await client.get(`/api/v1/measurements/units/${unitId}`);
+    expect(getAfter.status).toBe(404);
+  });
+
+  it('refuses to delete a unit that an item still references', async () => {
+    const tenant = await createTestTenant('unit-in-use');
+    const client = authed(tenant.token);
+    const suffix = uniqueSuffix();
+
+    const unit = await client.post('/api/v1/measurements/units').send({
+      name: `InUse-${suffix}`,
+      symbol: `iu-${suffix}`,
+      family: 'UNIT',
+      factorToBase: 1,
+      isBase: false,
+    });
+    expect(unit.status).toBe(201);
+    const unitId = unit.body.data.id;
+
+    const category = await client.post('/api/v1/catalog/categories').send({ name: `InUseCat-${suffix}` });
+    const item = await client.post('/api/v1/catalog/items').send({
+      name: `InUseItem-${suffix}`,
+      categoryId: category.body.data.id,
+      baseUnitId: unitId,
+      isStockable: true,
+      isBuyable: true,
+    });
+    expect(item.status).toBe(201);
+
+    const blocked = await client.delete(`/api/v1/measurements/units/${unitId}`);
+    expect(blocked.status).toBe(409);
+
+    // Once the referencing item is gone, the unit can be deleted.
+    const itemDeleted = await client.delete(`/api/v1/catalog/items/${item.body.data.id}`);
+    expect(itemDeleted.status).toBe(204);
+
+    const nowDeleted = await client.delete(`/api/v1/measurements/units/${unitId}`);
+    expect(nowDeleted.status).toBe(204);
   });
 
   it('converts between two units of the same family via factorToBase', async () => {

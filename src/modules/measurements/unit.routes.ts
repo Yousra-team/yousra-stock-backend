@@ -79,12 +79,14 @@ unitRouter.get('/convert', validateQuery(convertQuerySchema), controller.convert
  *   delete:
  *     tags: [Measurements]
  *     summary: Soft-delete a unit
+ *     description: Stamps `deletedAt` so the unit drops out of every list/get. Fails with 409 if any non-deleted item or nomenclature line still references the unit.
  *     security: [{ bearerAuth: [] }]
  *     parameters: [{ $ref: '#/components/parameters/IdParam' }]
  *     responses:
  *       204: { description: No Content }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/NotFound' }
+ *       409: { $ref: '#/components/responses/Conflict' }
  */
 unitRouter.get('/:id', controller.getById);
 unitRouter.patch('/:id', validateBody(updateUnitSchema), controller.update);

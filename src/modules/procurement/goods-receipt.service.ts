@@ -1,6 +1,7 @@
 import { db } from '../../prisma/db';
 import type { FieldOutputTypes } from '../../prisma/contract.d';
 import { BadRequestError, NotFoundError } from '../../shared/errors';
+import { allocateDocumentReference } from '../../shared/documentNumber';
 import { buildMeta, type PaginationParams } from '../../shared/pagination';
 import { getItemById } from '../catalog';
 import { recordStockMovement } from '../stock';
@@ -69,6 +70,7 @@ export async function createGoodsReceipt(
 
   return db.transaction(async (tx) => {
     const receipt = await tx.orm.public.GoodsReceipt.create({
+      reference: await allocateDocumentReference(tx, 'GR'),
       purchaseOrderId: purchaseOrder.id,
       supplierId: purchaseOrder.supplierId,
       warehouseId: purchaseOrder.warehouseId,
@@ -107,10 +109,10 @@ export async function createGoodsReceipt(
 
     const invoice = await tx.orm.public.Invoice.create({
       goodsReceiptId: receipt.id,
-      // Full id, not a slice: `id` is a UUIDv7, whose leading bits are a millisecond
-      // timestamp rather than random — truncating it collides for receipts created
-      // close together in time (seen in testing). The full id is unique by construction.
-      invoiceNumber: `INV-${receipt.id}`,
+      // `INV-YY-MM-DD-NNN`, allocated from the same per-day counter as the
+      // receipt's `GR-` reference — see `shared/documentNumber.ts`. (Was
+      // `INV-<uuid>`: unique but unreadable on a printed invoice.)
+      invoiceNumber: await allocateDocumentReference(tx, 'INV'),
       // Round again after summing: summing several clean 2-decimal numbers in binary float
       // can itself reintroduce noise (e.g. 0.1 + 0.2 -> 0.30000000000000004).
       amount: (Math.round(amount * 100) / 100).toString(),

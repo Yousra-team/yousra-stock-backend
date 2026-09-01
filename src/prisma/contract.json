@@ -8,6 +8,10 @@
       "model": "Company",
       "namespace": "public"
     },
+    "documentCounter": {
+      "model": "DocumentCounter",
+      "namespace": "public"
+    },
     "externalSystem": {
       "model": "ExternalSystem",
       "namespace": "public"
@@ -448,6 +452,67 @@
               "table": "company"
             }
           },
+          "DocumentCounter": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "day": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "scope": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "value": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "day": {
+                  "column": "day"
+                },
+                "scope": {
+                  "column": "scope"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "value": {
+                  "column": "value"
+                }
+              },
+              "namespaceId": "public",
+              "table": "documentCounter"
+            }
+          },
           "ExternalSystem": {
             "fields": {
               "apiKeyHash": {
@@ -612,6 +677,13 @@
                   "kind": "scalar"
                 }
               },
+              "reference": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "status": {
                 "nullable": false,
                 "type": {
@@ -755,6 +827,9 @@
                 },
                 "receivedAt": {
                   "column": "receivedAt"
+                },
+                "reference": {
+                  "column": "reference"
                 },
                 "status": {
                   "column": "status"
@@ -1691,6 +1766,13 @@
                   "kind": "scalar"
                 }
               },
+              "reference": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "status": {
                 "nullable": false,
                 "type": {
@@ -1816,6 +1898,9 @@
                 },
                 "id": {
                   "column": "id"
+                },
+                "reference": {
+                  "column": "reference"
                 },
                 "status": {
                   "column": "status"
@@ -2112,6 +2197,13 @@
                   "kind": "scalar"
                 }
               },
+              "reference": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "transferItemId": {
                 "nullable": true,
                 "type": {
@@ -2264,6 +2356,9 @@
                 },
                 "receiptItemId": {
                   "column": "receiptItemId"
+                },
+                "reference": {
+                  "column": "reference"
                 },
                 "transferItemId": {
                   "column": "transferItemId"
@@ -3272,6 +3367,11 @@
               "namespaceId": "public",
               "tableName": "company"
             },
+            "documentCounter": {
+              "kind": "rls",
+              "namespaceId": "public",
+              "tableName": "documentCounter"
+            },
             "externalSystem": {
               "kind": "rls",
               "namespaceId": "public",
@@ -3425,6 +3525,48 @@
               },
               "uniques": []
             },
+            "documentCounter": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "day": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "scope": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "value": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [],
+              "primaryKey": {
+                "columns": [
+                  "scope",
+                  "day"
+                ]
+              },
+              "uniques": []
+            },
             "externalSystem": {
               "columns": {
                 "apiKeyHash": {
@@ -3562,6 +3704,11 @@
                   "nativeType": "timestamptz",
                   "nullable": false
                 },
+                "reference": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "status": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -3698,7 +3845,13 @@
                   "id"
                 ]
               },
-              "uniques": []
+              "uniques": [
+                {
+                  "columns": [
+                    "reference"
+                  ]
+                }
+              ]
             },
             "goodsReceiptItem": {
               "checks": [
@@ -4399,6 +4552,11 @@
                   "nativeType": "uuid",
                   "nullable": false
                 },
+                "reference": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "status": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -4518,7 +4676,13 @@
                   "id"
                 ]
               },
-              "uniques": []
+              "uniques": [
+                {
+                  "columns": [
+                    "reference"
+                  ]
+                }
+              ]
             },
             "purchaseOrderItem": {
               "checks": [
@@ -4821,6 +4985,11 @@
                   "nativeType": "uuid",
                   "nullable": true
                 },
+                "reference": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "transferItemId": {
                   "codecId": "pg/uuid@1",
                   "nativeType": "uuid",
@@ -5024,7 +5193,13 @@
                   "id"
                 ]
               },
-              "uniques": []
+              "uniques": [
+                {
+                  "columns": [
+                    "reference"
+                  ]
+                }
+              ]
             },
             "supplier": {
               "checks": [
@@ -5772,10 +5947,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "0155049009fa95e56a30af8a4c28aad54fba4d07a096518234dde070edb67e12"
+    "storageHash": "4ad279f028c7b857f28d9b12608999e461b1393d3beceec931bb81e166472761"
   },
   "execution": {
-    "executionHash": "e364cc735dc1e90a4b351541a8b0e7e8ab98206b4973e4c1d65ef86f2620b837",
+    "executionHash": "290b2a01898e0e363bf242b862df34542ea5c0e15a2fcbb797a36a6571f6de38",
     "mutations": {
       "defaults": [
         {
@@ -5802,6 +5977,21 @@
             "column": "updatedAt",
             "namespace": "public",
             "table": "company"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "onUpdate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "updatedAt",
+            "namespace": "public",
+            "table": "documentCounter"
           }
         },
         {

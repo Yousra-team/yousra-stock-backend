@@ -334,6 +334,12 @@ model Warehouse {
 model PurchaseOrder {
   id Uuid @id @default(uuid(7))
 
+  /// Human-readable document number — `PO-YY-MM-DD-NNN`, NNN a per-day counter.
+  /// Allocated in the create transaction by `allocateDocumentReference()`
+  /// (see `shared/documentNumber.ts`). Nullable only so the column could be
+  /// added without backfilling historical rows; every row the app writes has one.
+  reference String? @unique
+
   supplierId Uuid
   supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
 
@@ -387,6 +393,9 @@ model PurchaseOrderItem {
 /// end to end — do not drop it.
 model GoodsReceipt {
   id Uuid @id @default(uuid(7))
+
+  /// Human-readable document number — `GR-YY-MM-DD-NNN`. See `PurchaseOrder.reference`.
+  reference String? @unique
 
   purchaseOrderId Uuid
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
@@ -452,6 +461,9 @@ model Invoice {
   goodsReceiptId Uuid         @unique
   goodsReceipt   GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Restrict)
 
+  /// Human-readable document number — `INV-YY-MM-DD-NNN`, allocated in the
+  /// goods-receipt transaction alongside the receipt's own `GR-` reference.
+  /// This is the invoice's public identifier; already `@unique`.
   invoiceNumber String  @unique
   amount        Decimal
   /// ISO 4217 code, e.g. "XAF".
@@ -560,6 +572,11 @@ model StockLevel {
 model StockMovement {
   id Uuid @id @default(uuid(7))
 
+  /// Human-readable document number — `SM-YY-MM-DD-NNN`. See `PurchaseOrder.reference`.
+  /// Every movement gets one, whatever its `type` — they all funnel through
+  /// `recordStockMovement()`.
+  reference String? @unique
+
   type StockMovementType
 
   itemId Uuid
@@ -599,5 +616,30 @@ model StockMovement {
   @@check(expression: "\"quantity\" > 0", name: "movement_quantity_positive")
   @@check(expression: "((\"type\" = 'MANUAL_OUT') = (\"reason\" IS NOT NULL))", name: "movement_reason_only_for_manual_out")
   @@check(expression: "(((\"nomenclatureId\" IS NOT NULL)::int + (\"receiptItemId\" IS NOT NULL)::int + (\"transferItemId\" IS NOT NULL)::int) <= 1)", name: "movement_at_most_one_source")
+  @@rls
+}
+
+// ---------------------------------------------------------------------------
+// Document numbering
+// ---------------------------------------------------------------------------
+
+/// Backs the `PO-` / `GR-` / `INV-` / `SM-` `YY-MM-DD-NNN` document references.
+/// One row per (`scope`, `day`); `value` is the highest number handed out for
+/// that pair. Only ever written through `allocateDocumentReference()` — a single
+/// atomic `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent
+/// document creates each get a distinct NNN with no row lock to reason about.
+/// Not exposed by any API.
+model DocumentCounter {
+  /// Document type: `PO` | `GR` | `INV` | `SM`.
+  scope String
+  /// Calendar day of the reference, `YY-MM-DD` in UTC.
+  day   String
+  /// Last sequence number issued for (`scope`, `day`).
+  value Int
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  @@id([scope, day])
   @@rls
 }

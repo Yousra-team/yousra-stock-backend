@@ -50,6 +50,7 @@ describe('procurement: purchase order → goods receipt → stock + invoice', ()
     });
     expect(po.status).toBe(201);
     expect(po.body.data.status).toBe('DRAFT');
+    expect(po.body.data.reference).toMatch(/^PO-\d{2}-\d{2}-\d{2}-\d{3,}$/);
     const purchaseOrderId = po.body.data.id;
 
     // Partial receipt: 6 of 10.
@@ -61,6 +62,8 @@ describe('procurement: purchase order → goods receipt → stock + invoice', ()
     expect(receipt1.status).toBe(201);
     expect(receipt1.body.data.status).toBe('PARTIALLY_RECEIVED');
     expect(receipt1.body.data.invoice.amount).toBe('600');
+    expect(receipt1.body.data.reference).toMatch(/^GR-\d{2}-\d{2}-\d{2}-\d{3,}$/);
+    expect(receipt1.body.data.invoice.invoiceNumber).toMatch(/^INV-\d{2}-\d{2}-\d{2}-\d{3,}$/);
 
     const poAfterPartial = await client.get(`/api/v1/purchases/${purchaseOrderId}`);
     expect(poAfterPartial.body.data.status).toBe('PARTIALLY_RECEIVED');
@@ -78,6 +81,9 @@ describe('procurement: purchase order → goods receipt → stock + invoice', ()
     expect(receipt2.status).toBe(201);
     expect(receipt2.body.data.status).toBe('RECEIVED');
     expect(receipt2.body.data.invoice.amount).toBe('400');
+    // Second receipt / invoice of the run get their own distinct references.
+    expect(receipt2.body.data.reference).not.toBe(receipt1.body.data.reference);
+    expect(receipt2.body.data.invoice.invoiceNumber).not.toBe(receipt1.body.data.invoice.invoiceNumber);
 
     const poAfterFull = await client.get(`/api/v1/purchases/${purchaseOrderId}`);
     expect(poAfterFull.body.data.status).toBe('RECEIVED');
@@ -164,5 +170,6 @@ describe('procurement: purchase order → goods receipt → stock + invoice', ()
     const got = await client.get(`/api/v1/procurement/invoices/${invoiceId}`);
     expect(got.status).toBe(200);
     expect(got.body.data.amount).toBe('60');
+    expect(got.body.data.invoiceNumber).toMatch(/^INV-\d{2}-\d{2}-\d{2}-\d{3,}$/);
   });
 });

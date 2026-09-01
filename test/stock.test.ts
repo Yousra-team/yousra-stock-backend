@@ -52,6 +52,7 @@ describe('stock levels + movements', () => {
       direction: 'increase',
     });
     expect(increase.status).toBe(201);
+    expect(increase.body.data.reference).toMatch(/^SM-\d{2}-\d{2}-\d{2}-\d{3,}$/);
 
     const afterIncrease = await client.get(`/api/v1/stock-levels/${warehouseId}/${itemId}`);
     expect(afterIncrease.body.data.quantity).toBe('20');
@@ -64,6 +65,9 @@ describe('stock levels + movements', () => {
       reason: 'INTERNAL_USE',
     });
     expect(decrease.status).toBe(201);
+    // Every movement gets its own SM- reference, distinct from the last one.
+    expect(decrease.body.data.reference).toMatch(/^SM-\d{2}-\d{2}-\d{2}-\d{3,}$/);
+    expect(decrease.body.data.reference).not.toBe(increase.body.data.reference);
 
     const afterDecrease = await client.get(`/api/v1/stock-levels/${warehouseId}/${itemId}`);
     expect(afterDecrease.body.data.quantity).toBe('15');

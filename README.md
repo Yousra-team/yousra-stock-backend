@@ -122,6 +122,30 @@ the caller's own company. See the brief for the full reasoning.
   list; would need revisiting (e.g. adding `companyId` directly to those
   tables) if that ever grows into the thousands.
 
+## Document references
+
+`PurchaseOrder`, `GoodsReceipt`, `StockMovement`, and `Invoice` each carry a
+human-readable identifier alongside their UUID primary key, for printing and
+for clients to fetch by:
+
+- `PurchaseOrder.reference` — `PO-YY-MM-DD-NNN`
+- `GoodsReceipt.reference` — `GR-YY-MM-DD-NNN`
+- `StockMovement.reference` — `SM-YY-MM-DD-NNN`
+- `Invoice.invoiceNumber` — `INV-YY-MM-DD-NNN` (the field already existed)
+
+`NNN` is a per-`(type, day)` counter in `documentCounter`, allocated in the
+create transaction by `shared/documentNumber.ts` with a single atomic
+`INSERT ... ON CONFLICT DO UPDATE ... RETURNING` — no read-then-write race
+(contrast the three documented below). The day segment is **UTC**; if the team
+wants Cameroon-local day boundaries, change `referenceDay()` and the backfill's
+`AT TIME ZONE`. Counter scope is global per type, not per company — fine while
+it's one tenant; a second tenant would interleave numbers.
+
+Pre-existing rows were backfilled once by
+`src/scripts/backfill-document-references.ts` (safe to re-run). Legacy
+`INV-<uuid>` invoice numbers were left as-is — an issued number shouldn't
+change — so only invoices created after this shipped use the new format.
+
 ## Notable bugs fixed during initial build (kept here for context)
 
 - **`req.query` under Express 5.** Express 5 made `req.query` a getter that
@@ -134,8 +158,9 @@ the caller's own company. See the brief for the full reasoning.
   the first 8 hex chars of the `GoodsReceipt` id for "uniqueness" — but
   `id` is a UUIDv7, whose leading bits are a millisecond timestamp, not
   random, so two receipts created close together in time produced the same
-  prefix and hit `invoice_invoiceNumber_key`. Fixed by using the full id
-  (`INV-<full-uuid>`), which is unique by construction.
+  prefix and hit `invoice_invoiceNumber_key`. First fixed by using the full
+  id (`INV-<full-uuid>`); later superseded by the human-readable
+  `INV-YY-MM-DD-NNN` scheme (see *Document references* below).
 - **Privilege escalation via `POST /auth/user`.** Any authenticated user —
   including `Staff` — could create a new teammate with `role: "Admin"` and
   log in as them, since the request body's `role` was trusted as-is. Fixed

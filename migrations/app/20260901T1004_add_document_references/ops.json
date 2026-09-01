@@ -1,0 +1,332 @@
+[
+  {
+    "id": "table.documentCounter",
+    "label": "Create table \"documentCounter\"",
+    "summary": "Creates table \"documentCounter\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "documentCounter"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"documentCounter\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"documentCounter\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"documentCounter\"",
+        "sql": "CREATE TABLE \"public\".\"documentCounter\" (\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"day\" text NOT NULL,\n  \"scope\" text NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"value\" int4 NOT NULL,\n  PRIMARY KEY (\"scope\", \"day\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"documentCounter\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"documentCounter\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.goodsReceipt.reference",
+    "label": "Add column \"reference\" to \"goodsReceipt\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "reference",
+        "table": "goodsReceipt"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"reference\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "goodsReceipt",
+          "reference"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"reference\"",
+        "sql": "ALTER TABLE \"public\".\"goodsReceipt\" ADD COLUMN \"reference\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"reference\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "goodsReceipt",
+          "reference"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.purchaseOrder.reference",
+    "label": "Add column \"reference\" to \"purchaseOrder\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "reference",
+        "table": "purchaseOrder"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"reference\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "purchaseOrder",
+          "reference"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"reference\"",
+        "sql": "ALTER TABLE \"public\".\"purchaseOrder\" ADD COLUMN \"reference\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"reference\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "purchaseOrder",
+          "reference"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.stockMovement.reference",
+    "label": "Add column \"reference\" to \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "reference",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"reference\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "stockMovement",
+          "reference"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"reference\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" ADD COLUMN \"reference\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"reference\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "stockMovement",
+          "reference"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.goodsReceipt.goodsReceipt_reference_key",
+    "label": "Add unique constraint on \"goodsReceipt\" (reference)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "goodsReceipt_reference_key",
+        "table": "goodsReceipt"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"goodsReceipt_reference_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "goodsReceipt_reference_key",
+          "public",
+          "\"public\".\"goodsReceipt\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"goodsReceipt_reference_key\"",
+        "sql": "ALTER TABLE \"public\".\"goodsReceipt\" ADD CONSTRAINT \"goodsReceipt_reference_key\" UNIQUE (\"reference\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"goodsReceipt_reference_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "goodsReceipt_reference_key",
+          "public",
+          "\"public\".\"goodsReceipt\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.purchaseOrder.purchaseOrder_reference_key",
+    "label": "Add unique constraint on \"purchaseOrder\" (reference)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "purchaseOrder_reference_key",
+        "table": "purchaseOrder"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"purchaseOrder_reference_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "purchaseOrder_reference_key",
+          "public",
+          "\"public\".\"purchaseOrder\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"purchaseOrder_reference_key\"",
+        "sql": "ALTER TABLE \"public\".\"purchaseOrder\" ADD CONSTRAINT \"purchaseOrder_reference_key\" UNIQUE (\"reference\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"purchaseOrder_reference_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "purchaseOrder_reference_key",
+          "public",
+          "\"public\".\"purchaseOrder\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.stockMovement.stockMovement_reference_key",
+    "label": "Add unique constraint on \"stockMovement\" (reference)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "stockMovement_reference_key",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"stockMovement_reference_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_reference_key",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"stockMovement_reference_key\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" ADD CONSTRAINT \"stockMovement_reference_key\" UNIQUE (\"reference\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"stockMovement_reference_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_reference_key",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rowLevelSecurity.public.documentCounter",
+    "label": "Enable row-level security on \"documentCounter\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "rowLevelSecurity",
+        "name": "documentCounter"
+      }
+    },
+    "precheck": [
+      {
+        "description": "check RLS is not already enabled on \"documentCounter\"",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_class\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"relnamespace\" WHERE (\"n\".\"nspname\" = $1 AND \"c\".\"relname\" = $2 AND NOT (\"c\".\"relrowsecurity\"))) AS \"result\"",
+        "params": [
+          "public",
+          "documentCounter"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "enable row-level security on \"documentCounter\"",
+        "sql": "ALTER TABLE \"public\".\"documentCounter\" ENABLE ROW LEVEL SECURITY"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify row-level security is enabled on \"documentCounter\"",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_class\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"relnamespace\" WHERE (\"n\".\"nspname\" = $1 AND \"c\".\"relname\" = $2 AND \"c\".\"relrowsecurity\")) AS \"result\"",
+        "params": [
+          "public",
+          "documentCounter"
+        ]
+      }
+    ]
+  }
+]

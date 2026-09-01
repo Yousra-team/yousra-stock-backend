@@ -1,6 +1,7 @@
 import { db, type Tx } from '../../prisma/db';
 import type { FieldOutputTypes } from '../../prisma/contract.d';
 import { BadRequestError, ConflictError, NotFoundError } from '../../shared/errors';
+import { allocateDocumentReference } from '../../shared/documentNumber';
 import { buildMeta, type PaginationParams } from '../../shared/pagination';
 import { getWarehouseById } from '../warehouses';
 import { getItemById } from '../catalog';
@@ -76,6 +77,7 @@ export async function recordStockMovement(tx: Tx, params: RecordMovementParams):
   }
 
   return tx.orm.public.StockMovement.create({
+    reference: await allocateDocumentReference(tx, 'SM'),
     type: params.type,
     itemId: params.itemId,
     warehouseId: params.warehouseId,

@@ -1377,6 +1377,12 @@
             "type": "string",
             "format": "uuid"
           },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "description": "Human-readable document number. Null only on rows created before this field existed.",
+            "example": "PO-26-09-01-001"
+          },
           "supplierId": {
             "type": "string",
             "format": "uuid"
@@ -1571,7 +1577,8 @@
           },
           "invoiceNumber": {
             "type": "string",
-            "example": "INV-2026-000042"
+            "description": "Human-readable invoice number. Rows created before this format shipped keep their legacy `INV-<uuid>` value.",
+            "example": "INV-26-09-01-001"
           },
           "amount": {
             "type": "string",
@@ -1602,6 +1609,12 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "description": "Human-readable document number. Null only on rows created before this field existed.",
+            "example": "GR-26-09-01-001"
           },
           "purchaseOrderId": {
             "type": "string",
@@ -1771,6 +1784,12 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "description": "Human-readable document number. Null only on rows created before this field existed.",
+            "example": "SM-26-09-01-001"
           },
           "type": {
             "type": "string",
@@ -3763,6 +3782,7 @@
           "Measurements"
         ],
         "summary": "Soft-delete a unit",
+        "description": "Stamps `deletedAt` so the unit drops out of every list/get. Fails with 409 if any non-deleted item or nomenclature line still references the unit.",
         "security": [
           {
             "bearerAuth": []
@@ -3782,6 +3802,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       }
