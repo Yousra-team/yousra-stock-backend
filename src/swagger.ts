@@ -19,6 +19,7 @@ import {
 import { createGoodsReceiptSchema } from './modules/procurement/goods-receipt.schema';
 import { createStockMovementSchema } from './modules/stock/stock.schema';
 import { createExternalSystemSchema } from './modules/integration/integration.schema';
+import { consumeSchema, releaseSchema } from './modules/external/external.schema';
 
 /**
  * Every request body is validated by a Zod schema (see the `*.schema.ts`
@@ -49,6 +50,8 @@ const requestSchemas = {
   CreateGoodsReceiptInput: createGoodsReceiptSchema,
   CreateStockMovementInput: createStockMovementSchema,
   CreateExternalSystemInput: createExternalSystemSchema,
+  ExternalConsumeInput: consumeSchema,
+  ExternalReleaseInput: releaseSchema,
 } as const;
 
 function zodToOpenApi(schema: z.ZodType): Record<string, unknown> {
@@ -164,6 +167,11 @@ const entitySchemas = {
     properties: {
       id: uuid,
       name: { type: 'string' },
+      code: {
+        type: 'string',
+        nullable: true,
+        description: 'Short handle external systems use to address this warehouse (unique per company).',
+      },
       companyId: uuid,
       company: ref,
       deletedAt: { ...timestamp, nullable: true },
@@ -378,7 +386,16 @@ const entitySchemas = {
       },
       type: {
         type: 'string',
-        enum: ['STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT'],
+        enum: [
+          'STOCK_IN',
+          'CONSUMPTION',
+          'MANUAL_OUT',
+          'TRANSFER_OUT',
+          'TRANSFER_IN',
+          'ADJUSTMENT',
+          'SALE',
+          'RETURN',
+        ],
       },
       itemId: uuid,
       item: ref,
@@ -408,8 +425,14 @@ const entitySchemas = {
         nullable: true,
         properties: { id: uuid, itemId: uuid },
       },
-      createdBy: uuid,
-      creator: userRef,
+      createdBy: { ...uuid, nullable: true, description: 'Set for human-initiated movements; null when an external system initiated it.' },
+      creator: { ...userRef, nullable: true },
+      createdByExternalSystemId: { ...uuid, nullable: true, description: 'Set for SALE / RETURN movements from an external system.' },
+      externalRef: {
+        type: 'string',
+        nullable: true,
+        description: "The originating external order's reference. Set only on SALE / RETURN.",
+      },
       createdAt: timestamp,
       updatedAt: timestamp,
     },
@@ -430,11 +453,10 @@ const entitySchemas = {
   },
   IssuedCredentials: {
     type: 'object',
-    description: 'The plaintext `apiKey` / `apiSecret` are returned only here — never stored, never returned again.',
+    description: 'The plaintext `apiToken` is returned only here — never stored hashed, never returned again by list/get.',
     properties: {
       system: { $ref: '#/components/schemas/ExternalSystem' },
-      apiKey: { type: 'string' },
-      apiSecret: { type: 'string' },
+      apiToken: { type: 'string' },
     },
   },
 };
@@ -495,6 +517,12 @@ const options: swaggerJsdoc.Options = {
     components: {
       securitySchemes: {
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        apiTokenAuth: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-Api-Token',
+          description: 'Opaque token issued when an external system is registered. Service-to-service only.',
+        },
       },
       parameters: {
         PageParam: {

@@ -1,2 +1,2 @@
 export { warehouseRouter } from './warehouse.routes';
-export { getWarehouseById } from './warehouse.service';
+export { getWarehouseById, getWarehouseByCode } from './warehouse.service';

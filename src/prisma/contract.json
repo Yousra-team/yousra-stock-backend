@@ -187,6 +187,14 @@
               {
                 "name": "ADJUSTMENT",
                 "value": "ADJUSTMENT"
+              },
+              {
+                "name": "SALE",
+                "value": "SALE"
+              },
+              {
+                "name": "RETURN",
+                "value": "RETURN"
               }
             ]
           },
@@ -515,15 +523,8 @@
           },
           "ExternalSystem": {
             "fields": {
-              "apiKeyHash": {
-                "nullable": false,
-                "type": {
-                  "codecId": "pg/text@1",
-                  "kind": "scalar"
-                }
-              },
-              "apiSecretHash": {
-                "nullable": false,
+              "apiToken": {
+                "nullable": true,
                 "type": {
                   "codecId": "pg/text@1",
                   "kind": "scalar"
@@ -601,15 +602,27 @@
                   "model": "Company",
                   "namespace": "public"
                 }
+              },
+              "stockMovements": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "createdByExternalSystemId"
+                  ]
+                },
+                "to": {
+                  "model": "StockMovement",
+                  "namespace": "public"
+                }
               }
             },
             "storage": {
               "fields": {
-                "apiKeyHash": {
-                  "column": "apiKeyHash"
-                },
-                "apiSecretHash": {
-                  "column": "apiSecretHash"
+                "apiToken": {
+                  "column": "apiToken"
                 },
                 "companyId": {
                   "column": "companyId"
@@ -2143,9 +2156,23 @@
                 }
               },
               "createdBy": {
-                "nullable": false,
+                "nullable": true,
                 "type": {
                   "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdByExternalSystemId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              },
+              "externalRef": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
                   "kind": "scalar"
                 }
               },
@@ -2240,6 +2267,21 @@
               }
             },
             "relations": {
+              "createdByExternalSystem": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "createdByExternalSystemId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "ExternalSystem",
+                  "namespace": "public"
+                }
+              },
               "creator": {
                 "cardinality": "N:1",
                 "on": {
@@ -2338,6 +2380,12 @@
                 },
                 "createdBy": {
                   "column": "createdBy"
+                },
+                "createdByExternalSystemId": {
+                  "column": "createdByExternalSystemId"
+                },
+                "externalRef": {
+                  "column": "externalRef"
                 },
                 "id": {
                   "column": "id"
@@ -2903,6 +2951,13 @@
           },
           "Warehouse": {
             "fields": {
+              "code": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "companyId": {
                 "nullable": false,
                 "type": {
@@ -3055,6 +3110,9 @@
             },
             "storage": {
               "fields": {
+                "code": {
+                  "column": "code"
+                },
                 "companyId": {
                   "column": "companyId"
                 },
@@ -3569,15 +3627,10 @@
             },
             "externalSystem": {
               "columns": {
-                "apiKeyHash": {
+                "apiToken": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
-                  "nullable": false
-                },
-                "apiSecretHash": {
-                  "codecId": "pg/text@1",
-                  "nativeType": "text",
-                  "nullable": false
+                  "nullable": true
                 },
                 "companyId": {
                   "codecId": "pg/uuid@1",
@@ -3661,7 +3714,7 @@
               "uniques": [
                 {
                   "columns": [
-                    "apiKeyHash"
+                    "apiToken"
                   ]
                 }
               ]
@@ -4914,6 +4967,11 @@
                   "prefix": "movement_at_most_one_source"
                 },
                 {
+                  "expression": "(((\"createdBy\" IS NOT NULL)::int + (\"createdByExternalSystemId\" IS NOT NULL)::int) = 1)",
+                  "name": "movement_exactly_one_actor_054dbc0c",
+                  "prefix": "movement_exactly_one_actor"
+                },
+                {
                   "expression": "\"quantity\" > 0",
                   "name": "movement_quantity_positive_fc510296",
                   "prefix": "movement_quantity_positive"
@@ -4929,8 +4987,8 @@
                   "prefix": "stockMovement_reason_check"
                 },
                 {
-                  "expression": "\"type\" IN ('STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT')",
-                  "name": "stockMovement_type_check_a6d21566",
+                  "expression": "\"type\" IN ('STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT', 'SALE', 'RETURN')",
+                  "name": "stockMovement_type_check_9d26df34",
                   "prefix": "stockMovement_type_check"
                 }
               ],
@@ -4947,7 +5005,17 @@
                 "createdBy": {
                   "codecId": "pg/uuid@1",
                   "nativeType": "uuid",
-                  "nullable": false
+                  "nullable": true
+                },
+                "createdByExternalSystemId": {
+                  "codecId": "pg/uuid@1",
+                  "nativeType": "uuid",
+                  "nullable": true
+                },
+                "externalRef": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
                 },
                 "id": {
                   "codecId": "pg/uuid@1",
@@ -5119,9 +5187,34 @@
                     "namespaceId": "public",
                     "tableName": "user"
                   }
+                },
+                {
+                  "onDelete": "restrict",
+                  "source": {
+                    "columns": [
+                      "createdByExternalSystemId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "stockMovement"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "externalSystem"
+                  }
                 }
               ],
               "indexes": [
+                {
+                  "columns": [
+                    "createdByExternalSystemId"
+                  ],
+                  "name": "stockMovement_createdByExternalSystemId_idx_06e09185",
+                  "prefix": "stockMovement_createdByExternalSystemId_idx",
+                  "unique": false
+                },
                 {
                   "columns": [
                     "createdBy"
@@ -5185,6 +5278,15 @@
                   ],
                   "name": "stockMovement_warehouseId_idx_8ff93e70",
                   "prefix": "stockMovement_warehouseId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "createdByExternalSystemId",
+                    "externalRef"
+                  ],
+                  "name": "stockmovement_external_ref_9bd0c997",
+                  "prefix": "stockmovement_external_ref",
                   "unique": false
                 }
               ],
@@ -5521,6 +5623,11 @@
             },
             "warehouse": {
               "columns": {
+                "code": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "companyId": {
                   "codecId": "pg/uuid@1",
                   "nativeType": "uuid",
@@ -5590,7 +5697,14 @@
                   "id"
                 ]
               },
-              "uniques": []
+              "uniques": [
+                {
+                  "columns": [
+                    "companyId",
+                    "code"
+                  ]
+                }
+              ]
             },
             "warehouseTransfer": {
               "checks": [
@@ -5906,7 +6020,9 @@
                 "MANUAL_OUT",
                 "TRANSFER_OUT",
                 "TRANSFER_IN",
-                "ADJUSTMENT"
+                "ADJUSTMENT",
+                "SALE",
+                "RETURN"
               ]
             },
             "SupplierType": {
@@ -5947,7 +6063,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "4ad279f028c7b857f28d9b12608999e461b1393d3beceec931bb81e166472761"
+    "storageHash": "5add5679f17ba2413d019e70b8efeb76e4d88f1b39601c62966a34a796c49aae"
   },
   "execution": {
     "executionHash": "290b2a01898e0e363bf242b862df34542ea5c0e15a2fcbb797a36a6571f6de38",

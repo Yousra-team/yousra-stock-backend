@@ -1,6 +1,7 @@
 import { db } from '../../prisma/db';
 import type { FieldOutputTypes } from '../../prisma/contract.d';
-import { NotFoundError } from '../../shared/errors';
+import { ConflictError, NotFoundError } from '../../shared/errors';
+import { isUniqueViolation } from '../../shared/dbErrors';
 import { omitUndefined } from '../../shared/omitUndefined';
 import { buildMeta, type PaginationParams } from '../../shared/pagination';
 import type { CreateWarehouseInput, UpdateWarehouseInput } from './warehouse.schema';
@@ -8,7 +9,18 @@ import type { CreateWarehouseInput, UpdateWarehouseInput } from './warehouse.sch
 type WarehouseRow = FieldOutputTypes['public']['Warehouse'];
 
 export async function createWarehouse(companyId: string, input: CreateWarehouseInput): Promise<WarehouseRow> {
-  return db.orm.public.Warehouse.create({ name: input.name, companyId });
+  try {
+    return await db.orm.public.Warehouse.create({
+      name: input.name,
+      code: input.code ?? null,
+      companyId,
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(`Warehouse code "${input.code}" is already in use`);
+    }
+    throw err;
+  }
 }
 
 export async function listWarehouses(companyId: string, pagination: PaginationParams) {
@@ -44,6 +56,19 @@ export async function getWarehouseById(companyId: string, id: string): Promise<W
   return warehouse;
 }
 
+export async function getWarehouseByCode(companyId: string, code: string): Promise<WarehouseRow> {
+  const warehouse = await db.orm.public.Warehouse
+    .where((w) => w.companyId.eq(companyId))
+    .where((w) => w.code.eq(code))
+    .where((w) => w.deletedAt.isNull())
+    .first();
+
+  if (!warehouse) {
+    throw new NotFoundError(`No warehouse with code "${code}"`);
+  }
+  return warehouse;
+}
+
 export async function updateWarehouse(
   companyId: string,
   id: string,
@@ -51,12 +76,19 @@ export async function updateWarehouse(
 ): Promise<WarehouseRow> {
   await getWarehouseById(companyId, id);
 
-  const updated = await db.orm.public.Warehouse
-    .where((w) => w.id.eq(id))
-    .where((w) => w.companyId.eq(companyId))
-    .update(omitUndefined(input));
+  try {
+    const updated = await db.orm.public.Warehouse
+      .where((w) => w.id.eq(id))
+      .where((w) => w.companyId.eq(companyId))
+      .update(omitUndefined(input));
 
-  return updated!;
+    return updated!;
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(`Warehouse code "${input.code}" is already in use`);
+    }
+    throw err;
+  }
 }
 
 export async function softDeleteWarehouse(companyId: string, id: string): Promise<void> {

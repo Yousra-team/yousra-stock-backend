@@ -1,0 +1,669 @@
+[
+  {
+    "id": "dropColumn.externalSystem.apiSecretHash",
+    "label": "Drop column \"apiSecretHash\" from \"externalSystem\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "apiSecretHash",
+        "table": "externalSystem"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"apiSecretHash\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "externalSystem",
+          "apiSecretHash"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop column \"apiSecretHash\"",
+        "sql": "ALTER TABLE \"public\".\"externalSystem\" DROP COLUMN \"apiSecretHash\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"apiSecretHash\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "externalSystem",
+          "apiSecretHash"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dropConstraint.externalSystem.externalSystem_apiKeyHash_key",
+    "label": "Drop constraint \"externalSystem_apiKeyHash_key\" on \"externalSystem\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "externalSystem_apiKeyHash_key",
+        "table": "externalSystem"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"externalSystem_apiKeyHash_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "externalSystem_apiKeyHash_key",
+          "public",
+          "\"public\".\"externalSystem\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop constraint \"externalSystem_apiKeyHash_key\"",
+        "sql": "ALTER TABLE \"public\".\"externalSystem\" DROP CONSTRAINT \"externalSystem_apiKeyHash_key\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"externalSystem_apiKeyHash_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "externalSystem_apiKeyHash_key",
+          "public",
+          "\"public\".\"externalSystem\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dropColumn.externalSystem.apiKeyHash",
+    "label": "Drop column \"apiKeyHash\" from \"externalSystem\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "apiKeyHash",
+        "table": "externalSystem"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"apiKeyHash\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "externalSystem",
+          "apiKeyHash"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop column \"apiKeyHash\"",
+        "sql": "ALTER TABLE \"public\".\"externalSystem\" DROP COLUMN \"apiKeyHash\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"apiKeyHash\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "externalSystem",
+          "apiKeyHash"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dropCheckConstraint.stockMovement.stockMovement_type_check_a6d21566",
+    "label": "Drop check constraint \"stockMovement_type_check_a6d21566\" on \"stockMovement\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "checkConstraint",
+        "name": "stockMovement_type_check_a6d21566",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"stockMovement_type_check_a6d21566\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_type_check_a6d21566",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop check constraint \"stockMovement_type_check_a6d21566\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" DROP CONSTRAINT \"stockMovement_type_check_a6d21566\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"stockMovement_type_check_a6d21566\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_type_check_a6d21566",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.externalSystem.apiToken",
+    "label": "Add column \"apiToken\" to \"externalSystem\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "apiToken",
+        "table": "externalSystem"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"apiToken\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "externalSystem",
+          "apiToken"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"apiToken\"",
+        "sql": "ALTER TABLE \"public\".\"externalSystem\" ADD COLUMN \"apiToken\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"apiToken\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "externalSystem",
+          "apiToken"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.stockMovement.createdByExternalSystemId",
+    "label": "Add column \"createdByExternalSystemId\" to \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "createdByExternalSystemId",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"createdByExternalSystemId\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "stockMovement",
+          "createdByExternalSystemId"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"createdByExternalSystemId\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" ADD COLUMN \"createdByExternalSystemId\" uuid"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"createdByExternalSystemId\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "stockMovement",
+          "createdByExternalSystemId"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.stockMovement.externalRef",
+    "label": "Add column \"externalRef\" to \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "externalRef",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"externalRef\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "stockMovement",
+          "externalRef"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"externalRef\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" ADD COLUMN \"externalRef\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"externalRef\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "stockMovement",
+          "externalRef"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.warehouse.code",
+    "label": "Add column \"code\" to \"warehouse\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "code",
+        "table": "warehouse"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"code\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "warehouse",
+          "code"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"code\"",
+        "sql": "ALTER TABLE \"public\".\"warehouse\" ADD COLUMN \"code\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"code\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "warehouse",
+          "code"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "alterNullability.dropNotNull.stockMovement.createdBy",
+    "label": "Drop NOT NULL on \"stockMovement\".\"createdBy\"",
+    "operationClass": "widening",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "createdBy",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"createdBy\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "stockMovement",
+          "createdBy"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop NOT NULL on \"createdBy\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" ALTER COLUMN \"createdBy\" DROP NOT NULL"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"createdBy\" is nullable",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3 AND \"is_nullable\" = $4)) AS \"result\"",
+        "params": [
+          "public",
+          "stockMovement",
+          "createdBy",
+          "YES"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.externalSystem.externalSystem_apiToken_key",
+    "label": "Add unique constraint on \"externalSystem\" (apiToken)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "externalSystem_apiToken_key",
+        "table": "externalSystem"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"externalSystem_apiToken_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "externalSystem_apiToken_key",
+          "public",
+          "\"public\".\"externalSystem\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"externalSystem_apiToken_key\"",
+        "sql": "ALTER TABLE \"public\".\"externalSystem\" ADD CONSTRAINT \"externalSystem_apiToken_key\" UNIQUE (\"apiToken\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"externalSystem_apiToken_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "externalSystem_apiToken_key",
+          "public",
+          "\"public\".\"externalSystem\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "checkConstraint.stockMovement.movement_exactly_one_actor_054dbc0c",
+    "label": "Add check constraint \"movement_exactly_one_actor_054dbc0c\" on \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "checkConstraint",
+        "name": "movement_exactly_one_actor_054dbc0c",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"movement_exactly_one_actor_054dbc0c\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "movement_exactly_one_actor_054dbc0c",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add check constraint \"movement_exactly_one_actor_054dbc0c\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" ADD CONSTRAINT \"movement_exactly_one_actor_054dbc0c\" CHECK ((((\"createdBy\" IS NOT NULL)::int + (\"createdByExternalSystemId\" IS NOT NULL)::int) = 1))"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"movement_exactly_one_actor_054dbc0c\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "movement_exactly_one_actor_054dbc0c",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "checkConstraint.stockMovement.stockMovement_type_check_9d26df34",
+    "label": "Add check constraint \"stockMovement_type_check_9d26df34\" on \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "checkConstraint",
+        "name": "stockMovement_type_check_9d26df34",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"stockMovement_type_check_9d26df34\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_type_check_9d26df34",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add check constraint \"stockMovement_type_check_9d26df34\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" ADD CONSTRAINT \"stockMovement_type_check_9d26df34\" CHECK (\"type\" IN ('STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT', 'SALE', 'RETURN'))"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"stockMovement_type_check_9d26df34\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_type_check_9d26df34",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.warehouse.warehouse_companyId_code_key",
+    "label": "Add unique constraint on \"warehouse\" (companyId, code)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "warehouse_companyId_code_key",
+        "table": "warehouse"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"warehouse_companyId_code_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "warehouse_companyId_code_key",
+          "public",
+          "\"public\".\"warehouse\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"warehouse_companyId_code_key\"",
+        "sql": "ALTER TABLE \"public\".\"warehouse\" ADD CONSTRAINT \"warehouse_companyId_code_key\" UNIQUE (\"companyId\", \"code\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"warehouse_companyId_code_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "warehouse_companyId_code_key",
+          "public",
+          "\"public\".\"warehouse\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.stockMovement.stockMovement_createdByExternalSystemId_idx_06e09185",
+    "label": "Create index \"stockMovement_createdByExternalSystemId_idx_06e09185\" on \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "stockMovement_createdByExternalSystemId_idx_06e09185",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"stockMovement_createdByExternalSystemId_idx_06e09185\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"stockMovement_createdByExternalSystemId_idx_06e09185\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"stockMovement_createdByExternalSystemId_idx_06e09185\"",
+        "sql": "CREATE INDEX \"stockMovement_createdByExternalSystemId_idx_06e09185\" ON \"public\".\"stockMovement\" (\"createdByExternalSystemId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"stockMovement_createdByExternalSystemId_idx_06e09185\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"stockMovement_createdByExternalSystemId_idx_06e09185\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.stockMovement.stockmovement_external_ref_9bd0c997",
+    "label": "Create index \"stockmovement_external_ref_9bd0c997\" on \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "stockmovement_external_ref_9bd0c997",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"stockmovement_external_ref_9bd0c997\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"stockmovement_external_ref_9bd0c997\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"stockmovement_external_ref_9bd0c997\"",
+        "sql": "CREATE INDEX \"stockmovement_external_ref_9bd0c997\" ON \"public\".\"stockMovement\" (\"createdByExternalSystemId\", \"externalRef\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"stockmovement_external_ref_9bd0c997\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"stockmovement_external_ref_9bd0c997\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.stockMovement.stockMovement_createdByExternalSystemId_fkey",
+    "label": "Add foreign key \"stockMovement_createdByExternalSystemId_fkey\" on \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "stockMovement_createdByExternalSystemId_fkey",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"stockMovement_createdByExternalSystemId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_createdByExternalSystemId_fkey",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"stockMovement_createdByExternalSystemId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\"\nADD CONSTRAINT \"stockMovement_createdByExternalSystemId_fkey\"\nFOREIGN KEY (\"createdByExternalSystemId\")\nREFERENCES \"public\".\"externalSystem\" (\"id\")\nON DELETE RESTRICT"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"stockMovement_createdByExternalSystemId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_createdByExternalSystemId_fkey",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ]
+  }
+]

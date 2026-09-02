@@ -14,7 +14,7 @@ integrationRouter.use(requireAuth);
  * /integration/systems:
  *   post:
  *     tags: [Integration]
- *     summary: Register an external system, issuing an API key + secret (shown once)
+ *     summary: Register an external system, issuing an API token (shown once)
  *     security: [{ bearerAuth: [] }]
  *     requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateExternalSystemInput' } } } }
  *     responses:
@@ -38,7 +38,7 @@ integrationRouter.get('/', validateQuery(paginationQuerySchema), controller.list
  * /integration/systems/{id}/rotate-keys:
  *   post:
  *     tags: [Integration]
- *     summary: Rotate the API key + secret for an external system (shown once)
+ *     summary: Rotate the API token for an external system (shown once)
  *     security: [{ bearerAuth: [] }]
  *     parameters: [{ $ref: '#/components/parameters/IdParam' }]
  *     responses:

@@ -28,7 +28,8 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test": "doppler run -- vitest run",
     "test:watch": "doppler run -- vitest",
-    "contract:emit": "prisma contract emit"
+    "contract:emit": "prisma contract emit",
+    "openapi:emit": "tsx src/scripts/emit-openapi.ts"
   },
   "dependencies": {
     "@prisma/orm-postgres": "^8.0.0-rc.8",
@@ -58,6 +59,7 @@
     "prisma": "^8.0.0-rc.10",
     "supertest": "^7.2.2",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "^2.9.0"
   }
 }

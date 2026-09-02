@@ -50,6 +50,11 @@ enum StockMovementType {
   TRANSFER_OUT
   TRANSFER_IN
   ADJUSTMENT
+  /// An external system (e.g. Pizzaland) confirmed a customer order — one row per
+  /// order line. Always attributed to an `ExternalSystem`, never a `User`.
+  SALE
+  /// Reverses the `SALE` rows of a cancelled external order, restoring stock.
+  RETURN
 }
 
 enum StockMovementReason {
@@ -114,14 +119,19 @@ model User {
 }
 
 /// An API consumer: Pizzaland, Finance, etc.
-/// Plaintext key/secret are returned once at creation or rotation, never persisted.
 model ExternalSystem {
-  id            Uuid   @id @default(uuid(7))
-  name          String
-  description   String
-  apiKeyHash    String @unique
-  apiSecretHash String
-  phone         String
+  id          Uuid   @id @default(uuid(7))
+  name        String
+  description String
+  phone       String
+
+  /// Opaque bearer token the consumer sends as `X-Api-Token`. Stored and
+  /// compared in plaintext (no hashing — deliberate, this is a low-value
+  /// internal-ecosystem credential). Returned once at creation or rotation,
+  /// never re-returned by any list/get endpoint. Nullable so the column could
+  /// be added without backfilling historical rows; every row the app writes
+  /// has one.
+  apiToken String? @unique
 
   companyId Uuid
   company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -130,6 +140,8 @@ model ExternalSystem {
   deletedAt TimestamptzString?
   createdAt TimestamptzString  @default(now())
   updatedAt temporal.updatedAtString()
+
+  stockMovements StockMovement[]
 
   @@index([companyId])
   @@rls
@@ -308,6 +320,11 @@ model Warehouse {
   id   Uuid   @id @default(uuid(7))
   name String
 
+  /// Stable short handle an external system (Pizzaland) sends instead of the
+  /// UUID — e.g. "akwa-branch". Unique per company; null for warehouses no
+  /// external system addresses.
+  code String?
+
   companyId Uuid
   company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
@@ -322,6 +339,7 @@ model Warehouse {
   stockLevels    StockLevel[]
   stockMovements StockMovement[]
 
+  @@unique([companyId, code])
   @@index([companyId])
   @@rls
 }
@@ -602,10 +620,23 @@ model StockMovement {
   transferItemId Uuid?
   transferItem   WarehouseTransferItem? @relation(fields: [transferItemId], references: [id], onDelete: Restrict)
 
-  /// The acting user. Movements originating from an `ExternalSystem` are
-  /// attributed to that system's service user — pending confirmation.
-  createdBy Uuid
-  creator   User @relation(fields: [createdBy], references: [employeeId], onDelete: Restrict)
+  /// The acting user — set for every human/JWT-initiated movement, null when
+  /// the movement came from an `ExternalSystem` (see `createdByExternalSystemId`).
+  /// Exactly one of the two is set — enforced by `movement_exactly_one_actor`.
+  createdBy Uuid?
+  creator   User? @relation(fields: [createdBy], references: [employeeId], onDelete: Restrict)
+
+  /// The acting external system — set for `SALE` / `RETURN` movements initiated
+  /// by Pizzaland et al., null for human-initiated movements.
+  createdByExternalSystemId Uuid?
+  createdByExternalSystem   ExternalSystem? @relation(fields: [createdByExternalSystemId], references: [id], onDelete: Restrict)
+
+  /// The originating external order's reference (Pizzaland `order.reference`).
+  /// Set only on `SALE` / `RETURN`. Not unique: one order spans several rows,
+  /// and a `RETURN` reuses its `SALE`'s ref. Replay/idempotency is handled in
+  /// the application by looking movements up by `(createdByExternalSystemId,
+  /// externalRef, type)`.
+  externalRef String?
 
   createdAt TimestamptzString @default(now())
   updatedAt temporal.updatedAtString()
@@ -613,9 +644,11 @@ model StockMovement {
   @@index([itemId, warehouseId])
   @@index([warehouseId])
   @@index([type])
+  @@index([createdByExternalSystemId, externalRef], name: "stockmovement_external_ref")
   @@check(expression: "\"quantity\" > 0", name: "movement_quantity_positive")
   @@check(expression: "((\"type\" = 'MANUAL_OUT') = (\"reason\" IS NOT NULL))", name: "movement_reason_only_for_manual_out")
   @@check(expression: "(((\"nomenclatureId\" IS NOT NULL)::int + (\"receiptItemId\" IS NOT NULL)::int + (\"transferItemId\" IS NOT NULL)::int) <= 1)", name: "movement_at_most_one_source")
+  @@check(expression: "(((\"createdBy\" IS NOT NULL)::int + (\"createdByExternalSystemId\" IS NOT NULL)::int) = 1)", name: "movement_exactly_one_actor")
   @@rls
 }
 

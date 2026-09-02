@@ -18,7 +18,12 @@ export interface RecordMovementParams {
   warehouseId: string;
   /** Always positive — direction comes from `type` (and `adjustmentDirection` for `ADJUSTMENT`). */
   quantity: number;
-  createdBy: string;
+  /** Set for human-initiated movements. Exactly one of `createdBy` / `createdByExternalSystemId` must be provided. */
+  createdBy?: string;
+  /** Set for `SALE` / `RETURN` movements initiated by an external system (Pizzaland). */
+  createdByExternalSystemId?: string;
+  /** The originating external order's reference — only meaningful with `createdByExternalSystemId`. */
+  externalRef?: string;
   reason?: StockMovementRow['reason'];
   nomenclatureId?: string;
   receiptItemId?: string;
@@ -28,10 +33,15 @@ export interface RecordMovementParams {
 }
 
 function resolveDelta(params: RecordMovementParams): number {
-  if (params.type === 'STOCK_IN' || params.type === 'TRANSFER_IN') {
+  if (params.type === 'STOCK_IN' || params.type === 'TRANSFER_IN' || params.type === 'RETURN') {
     return params.quantity;
   }
-  if (params.type === 'CONSUMPTION' || params.type === 'MANUAL_OUT' || params.type === 'TRANSFER_OUT') {
+  if (
+    params.type === 'CONSUMPTION' ||
+    params.type === 'MANUAL_OUT' ||
+    params.type === 'TRANSFER_OUT' ||
+    params.type === 'SALE'
+  ) {
     return -params.quantity;
   }
   if (params.type === 'ADJUSTMENT') {
@@ -51,6 +61,14 @@ function resolveDelta(params: RecordMovementParams): number {
  * calls this instead of touching `StockLevel` / `StockMovement` directly.
  */
 export async function recordStockMovement(tx: Tx, params: RecordMovementParams): Promise<StockMovementRow> {
+  const hasUser = params.createdBy != null;
+  const hasSystem = params.createdByExternalSystemId != null;
+  if (hasUser === hasSystem) {
+    throw new BadRequestError(
+      'Exactly one of createdBy / createdByExternalSystemId must be set on a stock movement',
+    );
+  }
+
   const delta = resolveDelta(params);
 
   const existingLevel = await tx.orm.public.StockLevel
@@ -86,7 +104,9 @@ export async function recordStockMovement(tx: Tx, params: RecordMovementParams):
     nomenclatureId: params.nomenclatureId ?? null,
     receiptItemId: params.receiptItemId ?? null,
     transferItemId: params.transferItemId ?? null,
-    createdBy: params.createdBy,
+    createdBy: params.createdBy ?? null,
+    createdByExternalSystemId: params.createdByExternalSystemId ?? null,
+    externalRef: params.externalRef ?? null,
   });
 }
 
@@ -157,6 +177,7 @@ export async function listStockMovements(companyId: string, pagination: Paginati
       .include('item', (it) => it.select('id', 'name'))
       .include('warehouse', (w) => w.select('id', 'name'))
       .include('creator', (u) => u.select('employeeId', 'firstName', 'lastName'))
+      .include('createdByExternalSystem', (es) => es.select('id', 'name'))
       .include('nomenclature', (n) => n.select('id', 'version', 'isActive'))
       .include('receiptItem', (ri) => ri.select('id', 'itemId'))
       .include('transferItem', (ti) => ti.select('id', 'itemId'))
@@ -178,6 +199,7 @@ export async function getStockMovementById(companyId: string, id: string): Promi
     .include('item', (it) => it.select('id', 'name'))
     .include('warehouse', (w) => w.select('id', 'name'))
     .include('creator', (u) => u.select('employeeId', 'firstName', 'lastName'))
+    .include('createdByExternalSystem', (es) => es.select('id', 'name'))
     .include('nomenclature', (n) => n.select('id', 'version', 'isActive'))
     .include('receiptItem', (ri) => ri.select('id', 'itemId'))
     .include('transferItem', (ti) => ti.select('id', 'itemId'))
@@ -231,4 +253,47 @@ export async function createStockMovement(
       adjustmentDirection: input.direction,
     });
   });
+}
+
+/**
+ * Current quantity for each of `itemIds` in one warehouse. An item with no
+ * `StockLevel` row yet reports `"0"` (same lazily-materialized read model as
+ * `getStockLevel`). Callers must have already checked the warehouse + items
+ * belong to their tenant.
+ */
+export async function getStockQuantities(
+  warehouseId: string,
+  itemIds: string[],
+): Promise<Array<{ itemId: string; quantity: string }>> {
+  if (itemIds.length === 0) {
+    return [];
+  }
+
+  const levels = await db.orm.public.StockLevel
+    .where((sl) => sl.warehouseId.eq(warehouseId))
+    .where((sl) => sl.itemId.in(itemIds))
+    .select('itemId', 'quantity')
+    .all();
+
+  const byItem = new Map(levels.map((l) => [l.itemId, l.quantity]));
+  return itemIds.map((itemId) => ({ itemId, quantity: byItem.get(itemId) ?? '0' }));
+}
+
+/**
+ * The `SALE` / `RETURN` movements a given external system already recorded for
+ * one order reference. The `external` module uses this for replay detection —
+ * a second `consume` / `release` for the same `orderRef` returns these instead
+ * of moving stock again.
+ */
+export async function findExternalMovements(
+  externalSystemId: string,
+  externalRef: string,
+  type: 'SALE' | 'RETURN',
+): Promise<StockMovementRow[]> {
+  return db.orm.public.StockMovement
+    .where((sm) => sm.createdByExternalSystemId.eq(externalSystemId))
+    .where((sm) => sm.externalRef.eq(externalRef))
+    .where((sm) => sm.type.eq(type))
+    .orderBy((sm) => sm.createdAt.asc())
+    .all();
 }

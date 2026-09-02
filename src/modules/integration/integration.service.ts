@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import bcrypt from 'bcryptjs';
 import { db } from '../../prisma/db';
 import type { FieldOutputTypes } from '../../prisma/contract.d';
 import { NotFoundError } from '../../shared/errors';
@@ -7,49 +6,39 @@ import { buildMeta, type PaginationParams } from '../../shared/pagination';
 import type { CreateExternalSystemInput } from './integration.schema';
 
 type ExternalSystemRow = FieldOutputTypes['public']['ExternalSystem'];
-export type PublicExternalSystem = Omit<ExternalSystemRow, 'apiKeyHash' | 'apiSecretHash'>;
-
-const BCRYPT_ROUNDS = 10;
+export type PublicExternalSystem = Omit<ExternalSystemRow, 'apiToken'>;
 
 function toPublic(system: ExternalSystemRow): PublicExternalSystem {
-  const { apiKeyHash, apiSecretHash, ...publicSystem } = system;
-  void apiKeyHash;
-  void apiSecretHash;
+  const { apiToken, ...publicSystem } = system;
+  void apiToken;
   return publicSystem;
 }
 
-function generateCredential(): string {
+function generateToken(): string {
   return crypto.randomBytes(24).toString('base64url');
 }
 
-/** Plaintext key/secret exist only for this one response — see the contract comment on `ExternalSystem`. */
+/** The plaintext `apiToken` exists only in this one response — see the contract comment on `ExternalSystem`. */
 export interface IssuedCredentials {
   system: PublicExternalSystem;
-  apiKey: string;
-  apiSecret: string;
+  apiToken: string;
 }
 
 export async function createExternalSystem(
   companyId: string,
   input: CreateExternalSystemInput,
 ): Promise<IssuedCredentials> {
-  const apiKey = generateCredential();
-  const apiSecret = generateCredential();
-  const [apiKeyHash, apiSecretHash] = await Promise.all([
-    bcrypt.hash(apiKey, BCRYPT_ROUNDS),
-    bcrypt.hash(apiSecret, BCRYPT_ROUNDS),
-  ]);
+  const apiToken = generateToken();
 
   const system = await db.orm.public.ExternalSystem.create({
     name: input.name,
     description: input.description,
     phone: input.phone,
-    apiKeyHash,
-    apiSecretHash,
+    apiToken,
     companyId,
   });
 
-  return { system: toPublic(system), apiKey, apiSecret };
+  return { system: toPublic(system), apiToken };
 }
 
 export async function listExternalSystems(companyId: string, pagination: PaginationParams) {
@@ -87,19 +76,14 @@ async function getExternalSystemRow(companyId: string, id: string): Promise<Exte
 export async function rotateKeys(companyId: string, id: string): Promise<IssuedCredentials> {
   await getExternalSystemRow(companyId, id);
 
-  const apiKey = generateCredential();
-  const apiSecret = generateCredential();
-  const [apiKeyHash, apiSecretHash] = await Promise.all([
-    bcrypt.hash(apiKey, BCRYPT_ROUNDS),
-    bcrypt.hash(apiSecret, BCRYPT_ROUNDS),
-  ]);
+  const apiToken = generateToken();
 
   const updated = await db.orm.public.ExternalSystem
     .where((es) => es.id.eq(id))
     .where((es) => es.companyId.eq(companyId))
-    .update({ apiKeyHash, apiSecretHash });
+    .update({ apiToken });
 
-  return { system: toPublic(updated!), apiKey, apiSecret };
+  return { system: toPublic(updated!), apiToken };
 }
 
 export async function revokeExternalSystem(companyId: string, id: string): Promise<void> {
@@ -109,4 +93,16 @@ export async function revokeExternalSystem(companyId: string, id: string): Promi
     .where((es) => es.id.eq(id))
     .where((es) => es.companyId.eq(companyId))
     .update({ deletedAt: new Date().toISOString() });
+}
+
+/**
+ * Look up a live external system by the plaintext `apiToken` it presented.
+ * Used by the `requireExternalSystem` middleware — the service-to-service
+ * auth path, entirely separate from the human JWT in `requireAuth`.
+ */
+export async function findExternalSystemByToken(token: string): Promise<ExternalSystemRow | null> {
+  return db.orm.public.ExternalSystem
+    .where((es) => es.apiToken.eq(token))
+    .where((es) => es.deletedAt.isNull())
+    .first();
 }

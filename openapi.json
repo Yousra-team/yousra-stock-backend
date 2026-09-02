@@ -16,6 +16,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "apiTokenAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Token",
+        "description": "Opaque token issued when an external system is registered. Service-to-service only."
       }
     },
     "parameters": {
@@ -301,6 +307,10 @@
           "name": {
             "type": "string",
             "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
@@ -311,6 +321,11 @@
         "type": "object",
         "properties": {
           "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "nullable": true,
             "type": "string",
             "minLength": 1
           }
@@ -780,6 +795,68 @@
           "phone"
         ]
       },
+      "ExternalConsumeInput": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "type": "string",
+            "minLength": 1
+          },
+          "orderRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "locationCode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lines": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "quantity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMinimum": true
+                }
+              },
+              "required": [
+                "itemId",
+                "quantity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "system",
+          "orderRef",
+          "locationCode",
+          "lines"
+        ]
+      },
+      "ExternalReleaseInput": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "type": "string",
+            "minLength": 1
+          },
+          "orderRef": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "system",
+          "orderRef"
+        ]
+      },
       "Ref": {
         "type": "object",
         "nullable": true,
@@ -993,6 +1070,11 @@
           },
           "name": {
             "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true,
+            "description": "Short handle external systems use to address this warehouse (unique per company)."
           },
           "companyId": {
             "type": "string",
@@ -1799,7 +1881,9 @@
               "MANUAL_OUT",
               "TRANSFER_OUT",
               "TRANSFER_IN",
-              "ADJUSTMENT"
+              "ADJUSTMENT",
+              "SALE",
+              "RETURN"
             ]
           },
           "itemId": {
@@ -1913,7 +1997,9 @@
           },
           "createdBy": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "nullable": true,
+            "description": "Set for human-initiated movements; null when an external system initiated it."
           },
           "creator": {
             "type": "object",
@@ -1930,6 +2016,17 @@
                 "type": "string"
               }
             }
+          },
+          "createdByExternalSystemId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Set for SALE / RETURN movements from an external system."
+          },
+          "externalRef": {
+            "type": "string",
+            "nullable": true,
+            "description": "The originating external order's reference. Set only on SALE / RETURN."
           },
           "createdAt": {
             "type": "string",
@@ -1991,15 +2088,12 @@
       },
       "IssuedCredentials": {
         "type": "object",
-        "description": "The plaintext `apiKey` / `apiSecret` are returned only here — never stored, never returned again.",
+        "description": "The plaintext `apiToken` is returned only here — never stored hashed, never returned again by list/get.",
         "properties": {
           "system": {
             "$ref": "#/components/schemas/ExternalSystem"
           },
-          "apiKey": {
-            "type": "string"
-          },
-          "apiSecret": {
+          "apiToken": {
             "type": "string"
           }
         }
@@ -3814,7 +3908,7 @@
         "tags": [
           "Integration"
         ],
-        "summary": "Register an external system, issuing an API key + secret (shown once)",
+        "summary": "Register an external system, issuing an API token (shown once)",
         "security": [
           {
             "bearerAuth": []
@@ -3905,7 +3999,7 @@
         "tags": [
           "Integration"
         ],
-        "summary": "Rotate the API key + secret for an external system (shown once)",
+        "summary": "Rotate the API token for an external system (shown once)",
         "security": [
           {
             "bearerAuth": []
@@ -3960,6 +4054,187 @@
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/external/stock": {
+      "get": {
+        "tags": [
+          "External"
+        ],
+        "summary": "Current stock for a set of items at one location (batch)",
+        "description": "`companyId` is derived from the API token. `itemIds` are Yousra Item UUIDs; an item with no movements yet reports quantity `\"0\"`.\n",
+        "security": [
+          {
+            "apiTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "system",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Caller's registered name; must match the token."
+          },
+          {
+            "in": "query",
+            "name": "locationCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Warehouse code (e.g. akwa-branch)."
+          },
+          {
+            "in": "query",
+            "name": "itemIds",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated Yousra Item UUIDs (max 100)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "locationCode": {
+                          "type": "string"
+                        },
+                        "warehouseId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "itemId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "quantity": {
+                                "type": "string",
+                                "example": "42"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/external/stock/consume": {
+      "post": {
+        "tags": [
+          "External"
+        ],
+        "summary": "An external order was confirmed — decrement stock (one SALE movement per line)",
+        "description": "Idempotent on `orderRef`: a repeat returns the original movements with status 200 and moves no stock. Insufficient stock for any line rolls the whole call back with a 409. Movements are attributed to the calling external system, not a user.\n",
+        "security": [
+          {
+            "apiTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalConsumeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replay — original movements returned",
+            "no change": null
+          },
+          "201": {
+            "description": "Stock decremented"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/external/stock/release": {
+      "post": {
+        "tags": [
+          "External"
+        ],
+        "summary": "A previously-consumed external order was cancelled — restore its stock",
+        "description": "Reverses every SALE movement recorded for `orderRef` with a matching RETURN movement. Idempotent: a repeat returns the original RETURNs with status 200. 404 if no consumption was ever recorded for the order.\n",
+        "security": [
+          {
+            "apiTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalReleaseInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replay — original RETURN movements returned",
+            "no change": null
+          },
+          "201": {
+            "description": "Stock restored"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

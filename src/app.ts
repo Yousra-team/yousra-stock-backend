@@ -15,6 +15,7 @@ import { nomenclatureRouter } from './modules/nomenclature';
 import { purchaseOrderRouter, procurementRouter } from './modules/procurement';
 import { stockLevelRouter, stockMovementRouter } from './modules/stock';
 import { integrationRouter } from './modules/integration';
+import { externalRouter } from './modules/external';
 
 import { errorHandler, notFoundHandler } from './shared/errorHandler';
 import { openapiSpec } from './swagger';
@@ -50,6 +51,7 @@ app.use('/api/v1/procurement', procurementRouter);
 app.use('/api/v1/stock-levels', stockLevelRouter);
 app.use('/api/v1/stock-movements', stockMovementRouter);
 app.use('/api/v1/integration/systems', integrationRouter);
+app.use('/api/v1/external', externalRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
