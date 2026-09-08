@@ -45,3 +45,15 @@ export class ConflictError extends ApiError {
     super(409, 'CONFLICT', message);
   }
 }
+
+/**
+ * A finished item was ordered (via the external integration) but has no active
+ * nomenclature to explode into ingredient consumption. Distinct `code` so the
+ * caller can tell "menu item not set up in inventory yet" apart from a plain
+ * insufficient-stock conflict.
+ */
+export class RecipeMissingError extends ApiError {
+  constructor(message: string) {
+    super(409, 'NO_RECIPE', message);
+  }
+}

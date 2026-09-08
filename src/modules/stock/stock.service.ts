@@ -20,7 +20,7 @@ export interface RecordMovementParams {
   quantity: number;
   /** Set for human-initiated movements. Exactly one of `createdBy` / `createdByExternalSystemId` must be provided. */
   createdBy?: string;
-  /** Set for `SALE` / `RETURN` movements initiated by an external system (Pizzaland). */
+  /** Set for `CONSUMPTION` / `RETURN` movements initiated by an external system (Pizzaland). */
   createdByExternalSystemId?: string;
   /** The originating external order's reference — only meaningful with `createdByExternalSystemId`. */
   externalRef?: string;
@@ -288,7 +288,7 @@ export async function getStockQuantities(
 export async function findExternalMovements(
   externalSystemId: string,
   externalRef: string,
-  type: 'SALE' | 'RETURN',
+  type: 'SALE' | 'RETURN' | 'CONSUMPTION',
 ): Promise<StockMovementRow[]> {
   return db.orm.public.StockMovement
     .where((sm) => sm.createdByExternalSystemId.eq(externalSystemId))

@@ -2,56 +2,75 @@ import { describe, expect, it } from 'vitest';
 import { api, authed, createTestTenant } from './helpers';
 
 /**
- * Sets up a tenant with two stockable items, a coded warehouse, opening stock
- * of 50 each, and a registered "Pizzaland" external system.
+ * Model A fixtures: a 2-level recipe (pizza = 1 dough + 2 cheese; dough = 3 flour),
+ * the raw ingredients (flour, cheese) stocked at 100 each in a coded warehouse,
+ * a finished item with NO recipe, and a registered "Pizzaland" external system.
+ *
+ * All items share one UNIT-family unit so no conversion is involved — conversion
+ * itself is covered by `measurements.test.ts`.
  */
-async function setupExternalFixtures(suffix: string) {
-  const tenant = await createTestTenant(`ext-${suffix}`);
+async function setupModelAFixtures(suffix: string) {
+  const tenant = await createTestTenant(`exta-${suffix}`);
   const client = authed(tenant.token);
 
   const unit = await client.post('/api/v1/measurements/units').send({
-    name: `ExtUnit-${suffix}`,
-    symbol: `eu-${suffix}`,
+    name: `ExtAUnit-${suffix}`,
+    symbol: `eau-${suffix}`,
     family: 'UNIT',
     factorToBase: 1,
     isBase: false,
   });
-  const category = await client.post('/api/v1/catalog/categories').send({ name: `ExtCat-${suffix}` });
+  const unitId = unit.body.data.id as string;
+  const category = await client.post('/api/v1/catalog/categories').send({ name: `ExtACat-${suffix}` });
+  const categoryId = category.body.data.id as string;
 
-  const mkItem = (name: string) =>
-    client.post('/api/v1/catalog/items').send({
-      name: `${name}-${suffix}`,
-      categoryId: category.body.data.id,
-      baseUnitId: unit.body.data.id,
-      isStockable: true,
-      isBuyable: true,
-    });
-  const pouletL = await mkItem('PouletPaneL');
-  const pouletXL = await mkItem('PouletPaneXL');
+  const mkItem = (name: string, isStockable: boolean): Promise<string> =>
+    client
+      .post('/api/v1/catalog/items')
+      .send({ name: `${name}-${suffix}`, categoryId, baseUnitId: unitId, isStockable, isBuyable: false })
+      .then((r) => r.body.data.id as string);
 
-  const locationCode = `akwa-${suffix}`;
+  const flourId = await mkItem('Flour', true);
+  const cheeseId = await mkItem('Cheese', true);
+  const doughId = await mkItem('Dough', false);
+  const pizzaId = await mkItem('Pizza', false);
+  const plainId = await mkItem('PlainNoRecipe', false);
+
+  const doughNom = await client
+    .post('/api/v1/nomenclature')
+    .send({ itemId: doughId, lines: [{ subItemId: flourId, quantity: 3, unitId }] });
+  await client.post(`/api/v1/nomenclature/${doughNom.body.data.id}/activate`);
+
+  const pizzaNom = await client.post('/api/v1/nomenclature').send({
+    itemId: pizzaId,
+    lines: [
+      { subItemId: doughId, quantity: 1, unitId },
+      { subItemId: cheeseId, quantity: 2, unitId },
+    ],
+  });
+  await client.post(`/api/v1/nomenclature/${pizzaNom.body.data.id}/activate`);
+
+  const locationCode = `exta-${suffix}`;
   const warehouse = await client
     .post('/api/v1/warehouses')
-    .send({ name: `ExtWarehouse-${suffix}`, code: locationCode });
-  expect(warehouse.status).toBe(201);
-  expect(warehouse.body.data.code).toBe(locationCode);
-
-  for (const itemId of [pouletL.body.data.id, pouletXL.body.data.id]) {
+    .send({ name: `ExtAWh-${suffix}`, code: locationCode });
+  const warehouseId = warehouse.body.data.id as string;
+  for (const itemId of [flourId, cheeseId]) {
     const seed = await client.post('/api/v1/stock-movements').send({
       type: 'ADJUSTMENT',
       itemId,
-      warehouseId: warehouse.body.data.id,
-      quantity: 50,
+      warehouseId,
+      quantity: 100,
       direction: 'increase',
     });
     expect(seed.status).toBe(201);
   }
 
-  const systemName = `Pizzaland-${suffix}`;
+  const systemName = `PizzalandA-${suffix}`;
   const registered = await client.post('/api/v1/integration/systems').send({
     name: systemName,
-    description: 'Pizzaland V1 backend',
-    phone: '+237600000099',
+    description: 'Pizzaland V1 (model A)',
+    phone: '+237600000098',
   });
   expect(registered.status).toBe(201);
 
@@ -60,92 +79,78 @@ async function setupExternalFixtures(suffix: string) {
     systemName,
     apiToken: registered.body.data.apiToken as string,
     locationCode,
-    pouletLId: pouletL.body.data.id as string,
-    pouletXLId: pouletXL.body.data.id as string,
+    warehouseId,
+    flourId,
+    cheeseId,
+    doughId,
+    pizzaId,
+    plainId,
+    pizzaNomId: pizzaNom.body.data.id as string,
   };
 }
 
-/** Raw supertest call carrying the external-system token instead of a JWT. */
-function extPost(url: string, token: string) {
-  return api.post(url).set('X-Api-Token', token);
-}
-function extGet(url: string, token: string) {
-  return api.get(url).set('X-Api-Token', token);
+const enc = encodeURIComponent;
+const extPost = (url: string, token: string) => api.post(url).set('X-Api-Token', token);
+const extGet = (url: string, token: string) => api.get(url).set('X-Api-Token', token);
+
+function stockUrl(fx: { systemName: string; locationCode: string }, itemIds: string[]): string {
+  return `/api/v1/external/stock?system=${enc(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${itemIds.join(',')}`;
 }
 
-describe('external stock integration', () => {
-  it('reads stock, consumes an order, is idempotent, then releases it', async () => {
+describe('external stock integration (recipe-based)', () => {
+  it('explodes a recursive recipe on consume, is idempotent, then release restores ingredients', async () => {
     const suffix = `${Date.now()}`;
-    const fx = await setupExternalFixtures(suffix);
-    const orderRef = `PL-ORDER-${suffix}`;
+    const fx = await setupModelAFixtures(suffix);
+    const orderRef = `A-${suffix}`;
 
-    // Read
-    const read = await extGet(
-      `/api/v1/external/stock?system=${encodeURIComponent(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${fx.pouletLId},${fx.pouletXLId}`,
-      fx.apiToken,
-    );
-    expect(read.status).toBe(200);
-    expect(read.body.data.warehouseId).toBeDefined();
-    const qty = (body: any, itemId: string) =>
-      body.data.items.find((i: { itemId: string }) => i.itemId === itemId).quantity;
-    expect(qty(read.body, fx.pouletLId)).toBe('50');
-    expect(qty(read.body, fx.pouletXLId)).toBe('50');
+    // Buildable before: flour 100 / 3-per-pizza = 33; cheese 100 / 2 = 50 -> min 33.
+    const read0 = await extGet(stockUrl(fx, [fx.pizzaId]), fx.apiToken);
+    expect(read0.status).toBe(200);
+    expect(read0.body.data.items[0].quantity).toBe('33');
 
-    // Consume: 2x L + 3x L (same line twice → aggregates to 5) + 1x XL
+    // Order 2 pizzas -> 6 flour (via dough) + 4 cheese consumed.
     const consume = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: fx.systemName,
       orderRef,
       locationCode: fx.locationCode,
-      lines: [
-        { itemId: fx.pouletLId, quantity: 2 },
-        { itemId: fx.pouletLId, quantity: 3 },
-        { itemId: fx.pouletXLId, quantity: 1 },
-      ],
+      lines: [{ itemId: fx.pizzaId, quantity: 2 }],
     });
     expect(consume.status).toBe(201);
     expect(consume.body.data.replayed).toBe(false);
-    expect(consume.body.data.movements).toHaveLength(2);
-    expect(consume.body.data.movements.every((m: { type: string }) => m.type === 'SALE')).toBe(true);
+    expect(consume.body.data.movements.every((m: { type: string }) => m.type === 'CONSUMPTION')).toBe(true);
 
-    const afterConsume = await extGet(
-      `/api/v1/external/stock?system=${encodeURIComponent(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${fx.pouletLId},${fx.pouletXLId}`,
-      fx.apiToken,
-    );
-    expect(qty(afterConsume.body, fx.pouletLId)).toBe('45');
-    expect(qty(afterConsume.body, fx.pouletXLId)).toBe('49');
+    const movements = consume.body.data.movements as Array<{ itemId: string; quantity: string }>;
+    const movFor = (itemId: string) => movements.find((m) => m.itemId === itemId);
+    expect(movFor(fx.flourId)?.quantity).toBe('6');
+    expect(movFor(fx.cheeseId)?.quantity).toBe('4');
+    expect(movFor(fx.pizzaId)).toBeUndefined();
+    expect(movFor(fx.doughId)).toBeUndefined();
 
-    // Replay: same orderRef → 200, no further decrement
+    // Buildable now: floor((100 - 6) / 3) = 31 — confirms flour was decremented via the sub-recipe.
+    const read1 = await extGet(stockUrl(fx, [fx.pizzaId]), fx.apiToken);
+    expect(read1.body.data.items[0].quantity).toBe('31');
+
+    // Replay: same orderRef -> 200, no further decrement.
     const replay = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: fx.systemName,
       orderRef,
       locationCode: fx.locationCode,
-      lines: [{ itemId: fx.pouletLId, quantity: 5 }, { itemId: fx.pouletXLId, quantity: 1 }],
+      lines: [{ itemId: fx.pizzaId, quantity: 2 }],
     });
     expect(replay.status).toBe(200);
     expect(replay.body.data.replayed).toBe(true);
 
-    const afterReplay = await extGet(
-      `/api/v1/external/stock?system=${encodeURIComponent(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${fx.pouletLId},${fx.pouletXLId}`,
-      fx.apiToken,
-    );
-    expect(qty(afterReplay.body, fx.pouletLId)).toBe('45');
-
-    // Release: restores the SALEs
+    // Release: RETURN per CONSUMPTION -> buildable back to 33.
     const release = await extPost('/api/v1/external/stock/release', fx.apiToken).send({
       system: fx.systemName,
       orderRef,
     });
     expect(release.status).toBe(201);
     expect(release.body.data.movements.every((m: { type: string }) => m.type === 'RETURN')).toBe(true);
+    const read2 = await extGet(stockUrl(fx, [fx.pizzaId]), fx.apiToken);
+    expect(read2.body.data.items[0].quantity).toBe('33');
 
-    const afterRelease = await extGet(
-      `/api/v1/external/stock?system=${encodeURIComponent(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${fx.pouletLId},${fx.pouletXLId}`,
-      fx.apiToken,
-    );
-    expect(qty(afterRelease.body, fx.pouletLId)).toBe('50');
-    expect(qty(afterRelease.body, fx.pouletXLId)).toBe('50');
-
-    // Release replay
+    // Release replay.
     const releaseAgain = await extPost('/api/v1/external/stock/release', fx.apiToken).send({
       system: fx.systemName,
       orderRef,
@@ -153,62 +158,73 @@ describe('external stock integration', () => {
     expect(releaseAgain.status).toBe(200);
     expect(releaseAgain.body.data.replayed).toBe(true);
 
-    // The JWT-side ledger attributes the SALE rows to the external system, not a user.
+    // Ledger: CONSUMPTION rows attributed to the external system, tagged with the pizza recipe.
     const ledger = await fx.client.get('/api/v1/stock-movements');
-    const saleRow = ledger.body.data.find(
-      (m: { type: string; externalRef: string }) => m.type === 'SALE' && m.externalRef === orderRef,
+    const consRow = ledger.body.data.find(
+      (m: { type: string; externalRef: string }) => m.type === 'CONSUMPTION' && m.externalRef === orderRef,
     );
-    expect(saleRow).toBeDefined();
-    expect(saleRow.createdBy).toBeNull();
-    expect(saleRow.createdByExternalSystem.name).toBe(fx.systemName);
-  });
+    expect(consRow).toBeDefined();
+    expect(consRow.createdBy).toBeNull();
+    expect(consRow.createdByExternalSystem.name).toBe(fx.systemName);
+    expect(consRow.nomenclature.id).toBe(fx.pizzaNomId);
+  }, 90_000);
 
-  it('rejects an order that exceeds available stock with 409 and moves nothing', async () => {
-    const suffix = `${Date.now()}-over`;
-    const fx = await setupExternalFixtures(suffix);
+  it('rejects an order whose recipe needs more ingredient than is in stock (409, nothing moved)', async () => {
+    const suffix = `${Date.now()}-short`;
+    const fx = await setupModelAFixtures(suffix);
+
+    // 50 pizzas need 150 flour; only 100 in stock.
+    const res = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
+      system: fx.systemName,
+      orderRef: `A-SHORT-${suffix}`,
+      locationCode: fx.locationCode,
+      lines: [{ itemId: fx.pizzaId, quantity: 50 }],
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toContain(fx.flourId);
+
+    const flour = await fx.client.get(`/api/v1/stock-levels/${fx.warehouseId}/${fx.flourId}`);
+    expect(flour.body.data.quantity).toBe('100');
+  }, 90_000);
+
+  it('rejects an ordered item that has no active recipe (409 NO_RECIPE)', async () => {
+    const suffix = `${Date.now()}-norecipe`;
+    const fx = await setupModelAFixtures(suffix);
 
     const res = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: fx.systemName,
-      orderRef: `PL-OVER-${suffix}`,
+      orderRef: `A-NR-${suffix}`,
       locationCode: fx.locationCode,
-      lines: [{ itemId: fx.pouletLId, quantity: 999 }],
+      lines: [{ itemId: fx.plainId, quantity: 1 }],
     });
     expect(res.status).toBe(409);
-
-    const read = await extGet(
-      `/api/v1/external/stock?system=${encodeURIComponent(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${fx.pouletLId}`,
-      fx.apiToken,
-    );
-    expect(read.body.data.items[0].quantity).toBe('50');
-  });
+    expect(res.body.error.code).toBe('NO_RECIPE');
+  }, 90_000);
 
   it('rejects a bad token (401) and a name that does not match the token (401)', async () => {
     const suffix = `${Date.now()}-auth`;
-    const fx = await setupExternalFixtures(suffix);
+    const fx = await setupModelAFixtures(suffix);
 
-    const badToken = await extGet(
-      `/api/v1/external/stock?system=${encodeURIComponent(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${fx.pouletLId}`,
-      'not-a-real-token',
-    );
+    const badToken = await extGet(stockUrl(fx, [fx.pizzaId]), 'not-a-real-token');
     expect(badToken.status).toBe(401);
 
     const wrongName = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: 'SomeOtherSystem',
-      orderRef: `PL-AUTH-${suffix}`,
+      orderRef: `A-AUTH-${suffix}`,
       locationCode: fx.locationCode,
-      lines: [{ itemId: fx.pouletLId, quantity: 1 }],
+      lines: [{ itemId: fx.pizzaId, quantity: 1 }],
     });
     expect(wrongName.status).toBe(401);
-  });
+  }, 90_000);
 
   it('rejects release for an order that was never consumed (404)', async () => {
     const suffix = `${Date.now()}-norel`;
-    const fx = await setupExternalFixtures(suffix);
+    const fx = await setupModelAFixtures(suffix);
 
     const res = await extPost('/api/v1/external/stock/release', fx.apiToken).send({
       system: fx.systemName,
-      orderRef: `PL-GHOST-${suffix}`,
+      orderRef: `A-GHOST-${suffix}`,
     });
     expect(res.status).toBe(404);
-  });
+  }, 90_000);
 });

@@ -1,9 +1,9 @@
 import { db } from '../../prisma/db';
 import type { FieldOutputTypes } from '../../prisma/contract.d';
 import type { ExternalSystemContext } from '../../shared/request-context';
-import { ConflictError, NotFoundError, UnauthorizedError } from '../../shared/errors';
-import { getItemById } from '../catalog';
+import { ConflictError, NotFoundError, RecipeMissingError, UnauthorizedError } from '../../shared/errors';
 import { getWarehouseByCode } from '../warehouses';
+import { explodeRequirements, getRecipeNode } from '../nomenclature';
 import { findExternalMovements, getStockQuantities, recordStockMovement } from '../stock';
 import type { ConsumeInput, ExternalStockQuery, ReleaseInput } from './external.schema';
 
@@ -41,12 +41,7 @@ function assertSystemName(ctx: ExternalSystemContext, providedName: string): voi
   }
 }
 
-/** Every itemId must be a live catalog item in the caller's company. */
-async function assertItemsInCompany(companyId: string, itemIds: string[]): Promise<void> {
-  await Promise.all(itemIds.map((id) => getItemById(companyId, id)));
-}
-
-/** Sum quantities per itemId — an order may legitimately list the same item twice. */
+/** Sum quantities per finished-item id — an order may legitimately list the same variant twice. */
 function aggregateLines(lines: Array<{ itemId: string; quantity: number }>): Map<string, number> {
   const byItem = new Map<string, number>();
   for (const line of lines) {
@@ -55,20 +50,53 @@ function aggregateLines(lines: Array<{ itemId: string; quantity: number }>): Map
   return byItem;
 }
 
-function canonicalLines(entries: Array<{ itemId: string; quantity: number | string }>): string {
-  return entries
-    .map((e) => `${e.itemId}:${Number(e.quantity)}`)
-    .sort()
-    .join(',');
+/** One `CONSUMPTION` movement to write: an ingredient, a quantity, the recipe it came from. */
+interface PlannedConsumption {
+  itemId: string;
+  quantity: number;
+  nomenclatureId: string;
 }
 
 export async function getExternalStock(ctx: ExternalSystemContext, query: ExternalStockQuery) {
   assertSystemName(ctx, query.system);
   const warehouse = await getWarehouseByCode(ctx.companyId, query.locationCode);
-  await assertItemsInCompany(ctx.companyId, query.itemIds);
 
-  const quantities = await getStockQuantities(warehouse.id, query.itemIds);
-  return { locationCode: query.locationCode, warehouseId: warehouse.id, items: quantities };
+  // Resolve each queried item to its recipe (or "it's a raw ingredient"), then
+  // gather every raw item id we need a stock number for in one batch.
+  const resolved = await Promise.all(
+    query.itemIds.map(async (id) => {
+      const node = await getRecipeNode(ctx.companyId, id);
+      const exploded =
+        node.activeNomenclatureId === null
+          ? null
+          : await explodeRequirements(ctx.companyId, node.item.id, 1);
+      return { node, exploded };
+    }),
+  );
+
+  const rawIds = new Set<string>();
+  for (const { node, exploded } of resolved) {
+    if (exploded === null) rawIds.add(node.item.id);
+    else for (const id of exploded.requirements.keys()) rawIds.add(id);
+  }
+  const onHand = new Map(
+    (await getStockQuantities(warehouse.id, [...rawIds])).map((q) => [q.itemId, Number(q.quantity)]),
+  );
+
+  const items = resolved.map(({ node, exploded }) => {
+    if (exploded === null) {
+      return { itemId: node.item.id, quantity: (onHand.get(node.item.id) ?? 0).toString() };
+    }
+    // Buildable = how many whole units the scarcest ingredient allows.
+    let buildable = Infinity;
+    for (const [ingId, perUnit] of exploded.requirements) {
+      if (perUnit <= 0) continue;
+      buildable = Math.min(buildable, Math.floor((onHand.get(ingId) ?? 0) / perUnit));
+    }
+    return { itemId: node.item.id, quantity: (Number.isFinite(buildable) ? buildable : 0).toString() };
+  });
+
+  return { locationCode: query.locationCode, warehouseId: warehouse.id, items };
 }
 
 export async function consumeStock(ctx: ExternalSystemContext, input: ConsumeInput) {
@@ -76,46 +104,68 @@ export async function consumeStock(ctx: ExternalSystemContext, input: ConsumeInp
 
   const warehouse = await getWarehouseByCode(ctx.companyId, input.locationCode);
   const aggregated = aggregateLines(input.lines);
-  const itemIds = [...aggregated.keys()];
-  await assertItemsInCompany(ctx.companyId, itemIds);
+  const finishedItemIds = [...aggregated.keys()];
 
   // Idempotency: a repeat of the same orderRef returns the original movements
-  // and moves no stock. A repeat carrying a *different* payload is still
-  // treated as a replay (the first call wins) but is logged.
-  const existing = await findExternalMovements(ctx.id, input.orderRef, 'SALE');
+  // and moves no stock.
+  const existing = await findExternalMovements(ctx.id, input.orderRef, 'CONSUMPTION');
   if (existing.length > 0) {
-    const incoming = canonicalLines([...aggregated].map(([itemId, quantity]) => ({ itemId, quantity })));
-    const recorded = canonicalLines(existing.map((m) => ({ itemId: m.itemId, quantity: m.quantity })));
-    if (incoming !== recorded) {
-      console.warn(
-        `[external] consume replay for orderRef=${input.orderRef} system=${ctx.name} ignored a changed payload ` +
-          `(recorded: ${recorded}; incoming: ${incoming})`,
-      );
-    }
+    console.info(`[external] consume replay for orderRef=${input.orderRef} system=${ctx.name}`);
     return { orderRef: input.orderRef, replayed: true, movements: existing.map(toMovementResult) };
   }
 
-  // Friendly pre-check so the 409 can name the short items. The transaction
-  // below is still the real guard (recordStockMovement rejects a negative level).
+  // Hard cutover: every ordered finished item must have an active recipe.
+  const nodes = await Promise.all(finishedItemIds.map((id) => getRecipeNode(ctx.companyId, id)));
+  const noRecipe = nodes.filter((n) => n.activeNomenclatureId === null).map((n) => n.item.id);
+  if (noRecipe.length > 0) {
+    throw new RecipeMissingError(`No active recipe for item(s): ${noRecipe.join(', ')}`);
+  }
+
+  // Explode every line to ingredient requirements. One planned CONSUMPTION per
+  // (finished item, ingredient); `totalPerIngredient` sums across the whole
+  // order for the up-front sufficiency check.
+  const planned: PlannedConsumption[] = [];
+  const totalPerIngredient = new Map<string, number>();
+  for (const [finishedItemId, qty] of aggregated) {
+    const { topNomenclatureId, requirements } = await explodeRequirements(
+      ctx.companyId,
+      finishedItemId,
+      qty,
+    );
+    for (const [ingId, need] of requirements) {
+      planned.push({ itemId: ingId, quantity: need, nomenclatureId: topNomenclatureId });
+      totalPerIngredient.set(ingId, (totalPerIngredient.get(ingId) ?? 0) + need);
+    }
+  }
+
+  // Friendly pre-check so the 409 can name the short ingredients. The
+  // transaction below is still the real guard (recordStockMovement rejects a
+  // negative level).
   const onHand = new Map(
-    (await getStockQuantities(warehouse.id, itemIds)).map((q) => [q.itemId, Number(q.quantity)]),
+    (await getStockQuantities(warehouse.id, [...totalPerIngredient.keys()])).map((q) => [
+      q.itemId,
+      Number(q.quantity),
+    ]),
   );
-  const short = [...aggregated]
-    .filter(([itemId, qty]) => (onHand.get(itemId) ?? 0) < qty)
-    .map(([itemId]) => itemId);
+  const short = [...totalPerIngredient]
+    .filter(([ingId, need]) => (onHand.get(ingId) ?? 0) < need)
+    .map(([ingId]) => ingId);
   if (short.length > 0) {
-    throw new ConflictError(`Insufficient stock at "${input.locationCode}" for item(s): ${short.join(', ')}`);
+    throw new ConflictError(
+      `Insufficient stock at "${input.locationCode}" for ingredient(s): ${short.join(', ')}`,
+    );
   }
 
   const movements = await db.transaction(async (tx) => {
     const created: StockMovementRow[] = [];
-    for (const [itemId, quantity] of aggregated) {
+    for (const p of planned) {
       created.push(
         await recordStockMovement(tx, {
-          type: 'SALE',
-          itemId,
+          type: 'CONSUMPTION',
+          itemId: p.itemId,
           warehouseId: warehouse.id,
-          quantity,
+          quantity: p.quantity,
+          nomenclatureId: p.nomenclatureId,
           createdByExternalSystemId: ctx.id,
           externalRef: input.orderRef,
         }),
@@ -130,8 +180,8 @@ export async function consumeStock(ctx: ExternalSystemContext, input: ConsumeInp
 export async function releaseStock(ctx: ExternalSystemContext, input: ReleaseInput) {
   assertSystemName(ctx, input.system);
 
-  const sales = await findExternalMovements(ctx.id, input.orderRef, 'SALE');
-  if (sales.length === 0) {
+  const consumed = await findExternalMovements(ctx.id, input.orderRef, 'CONSUMPTION');
+  if (consumed.length === 0) {
     throw new NotFoundError(`No consumption recorded for orderRef "${input.orderRef}"`);
   }
 
@@ -142,15 +192,16 @@ export async function releaseStock(ctx: ExternalSystemContext, input: ReleaseInp
 
   const movements = await db.transaction(async (tx) => {
     const created: StockMovementRow[] = [];
-    for (const sale of sales) {
+    for (const c of consumed) {
       created.push(
         await recordStockMovement(tx, {
           type: 'RETURN',
-          itemId: sale.itemId,
-          warehouseId: sale.warehouseId,
-          quantity: Number(sale.quantity),
+          itemId: c.itemId,
+          warehouseId: c.warehouseId,
+          quantity: Number(c.quantity),
           createdByExternalSystemId: ctx.id,
           externalRef: input.orderRef,
+          ...(c.nomenclatureId ? { nomenclatureId: c.nomenclatureId } : {}),
         }),
       );
     }

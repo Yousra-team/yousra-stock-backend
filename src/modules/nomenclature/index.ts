@@ -1,2 +1,7 @@
 export { nomenclatureRouter } from './nomenclature.routes';
-export { getNomenclatureById } from './nomenclature.service';
+export {
+  getNomenclatureById,
+  getRecipeNode,
+  explodeRequirements,
+  type ExplodedRequirements,
+} from './nomenclature.service';

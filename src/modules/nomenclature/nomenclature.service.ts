@@ -1,11 +1,11 @@
 import { db, type Tx } from '../../prisma/db';
 import type { FieldOutputTypes } from '../../prisma/contract.d';
-import { ConflictError, NotFoundError } from '../../shared/errors';
+import { ConflictError, NotFoundError, RecipeMissingError } from '../../shared/errors';
 import { isUniqueViolation } from '../../shared/dbErrors';
 import { omitUndefined } from '../../shared/omitUndefined';
 import { buildMeta, type PaginationParams } from '../../shared/pagination';
 import { getItemById } from '../catalog';
-import { getUnitById } from '../measurements';
+import { convertUnits, getUnitById } from '../measurements';
 import type { CreateNomenclatureInput, UpdateNomenclatureInput } from './nomenclature.schema';
 
 type NomenclatureRow = FieldOutputTypes['public']['Nomenclature'];
@@ -167,4 +167,136 @@ export async function softDeleteNomenclature(companyId: string, id: string): Pro
   await db.orm.public.Nomenclature
     .where((n) => n.id.eq(nomenclature.id))
     .update({ deletedAt: new Date().toISOString() });
+}
+
+// ---------------------------------------------------------------------------
+// Recipe explosion — used by the external stock integration to turn an order
+// for a finished item into ingredient-level `CONSUMPTION` movements.
+// ---------------------------------------------------------------------------
+
+/** How deep recursive sub-recipes may nest before we call it a data error. */
+const MAX_RECIPE_DEPTH = 12;
+
+interface RecipeLine {
+  subItemId: string;
+  subItemBaseUnitId: string;
+  /** Quantity per one unit of the parent, in `unitId`. Decimal string. */
+  quantity: string;
+  unitId: string;
+}
+
+interface RecipeNode {
+  item: { id: string; name: string; baseUnitId: string; isStockable: boolean };
+  /** Null when the item has no active recipe — it is then a raw leaf ingredient. */
+  activeNomenclatureId: string | null;
+  lines: RecipeLine[];
+}
+
+/**
+ * The item plus its active recipe (if any), shaped for `explodeRequirements`.
+ * Re-verifies the item belongs to `companyId` (throws 404 otherwise).
+ */
+export async function getRecipeNode(companyId: string, itemId: string): Promise<RecipeNode> {
+  const item = await getItemById(companyId, itemId);
+
+  const active = await db.orm.public.Nomenclature
+    .where((n) => n.itemId.eq(itemId))
+    .where((n) => n.isActive.eq(true))
+    .where((n) => n.deletedAt.isNull())
+    .include('lines', (branch) =>
+      branch
+        .select('id', 'subItemId', 'quantity', 'unitId')
+        .include('subItem', (si) => si.select('id', 'baseUnitId')),
+    )
+    .first();
+
+  return {
+    item: {
+      id: item.id,
+      name: item.name,
+      baseUnitId: item.baseUnitId,
+      isStockable: item.isStockable,
+    },
+    activeNomenclatureId: active?.id ?? null,
+    lines: (active?.lines ?? []).map((l) => ({
+      subItemId: l.subItemId,
+      subItemBaseUnitId: l.subItem.baseUnitId,
+      quantity: l.quantity,
+      unitId: l.unitId,
+    })),
+  };
+}
+
+export interface ExplodedRequirements {
+  /** Active nomenclature id of the top finished item — stamped on every movement. */
+  topNomenclatureId: string;
+  /** rawIngredientItemId -> total quantity needed, in that ingredient's base unit. */
+  requirements: Map<string, number>;
+}
+
+/**
+ * Recursively expands `quantity` units of `finishedItemId` into the raw
+ * ingredient quantities that must be consumed, following each ingredient's own
+ * active recipe until every branch bottoms out at a stock-tracked leaf.
+ *
+ * Throws:
+ * - `RecipeMissingError` — the top item has no active recipe.
+ * - `ConflictError` — a recipe cycle, nesting past `MAX_RECIPE_DEPTH`, a
+ *   leaf ingredient that is not stock-tracked, or a unit-family mismatch
+ *   between a recipe line and its ingredient's base unit.
+ */
+export async function explodeRequirements(
+  companyId: string,
+  finishedItemId: string,
+  quantity: number,
+): Promise<ExplodedRequirements> {
+  const top = await getRecipeNode(companyId, finishedItemId);
+  if (top.activeNomenclatureId === null) {
+    throw new RecipeMissingError(`No active recipe for item(s): ${finishedItemId}`);
+  }
+
+  const requirements = new Map<string, number>();
+  await accumulate(companyId, top, quantity, requirements, new Set<string>(), 0);
+  return { topNomenclatureId: top.activeNomenclatureId, requirements };
+}
+
+async function accumulate(
+  companyId: string,
+  node: RecipeNode,
+  quantity: number,
+  acc: Map<string, number>,
+  path: Set<string>,
+  depth: number,
+): Promise<void> {
+  if (node.activeNomenclatureId === null) {
+    // Raw leaf ingredient.
+    if (!node.item.isStockable) {
+      throw new ConflictError(
+        `Recipe ingredient "${node.item.name}" has no recipe and is not stock-tracked`,
+      );
+    }
+    acc.set(node.item.id, (acc.get(node.item.id) ?? 0) + quantity);
+    return;
+  }
+
+  if (path.has(node.item.id)) {
+    throw new ConflictError(
+      `Recipe cycle detected: ${[...path, node.item.id].join(' -> ')}`,
+    );
+  }
+  if (depth >= MAX_RECIPE_DEPTH) {
+    throw new ConflictError(`Recipe nesting exceeds ${MAX_RECIPE_DEPTH} levels at "${node.item.name}"`);
+  }
+
+  const nextPath = new Set(path).add(node.item.id);
+  for (const line of node.lines) {
+    const perParent = Number(line.quantity) * quantity;
+    const inChildBase =
+      line.unitId === line.subItemBaseUnitId
+        ? perParent
+        : (await convertUnits(line.unitId, line.subItemBaseUnitId, perParent)).result;
+
+    const childNode = await getRecipeNode(companyId, line.subItemId);
+    await accumulate(companyId, childNode, inChildBase, acc, nextPath, depth + 1);
+  }
 }

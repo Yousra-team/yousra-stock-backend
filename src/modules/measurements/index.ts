@@ -1,2 +1,2 @@
 export { unitRouter } from './unit.routes';
-export { getUnitById } from './unit.service';
+export { getUnitById, convertUnits } from './unit.service';
