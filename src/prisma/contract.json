@@ -189,6 +189,10 @@
                 "value": "ADJUSTMENT"
               },
               {
+                "name": "PRODUCTION",
+                "value": "PRODUCTION"
+              },
+              {
                 "name": "SALE",
                 "value": "SALE"
               },
@@ -4987,8 +4991,8 @@
                   "prefix": "stockMovement_reason_check"
                 },
                 {
-                  "expression": "\"type\" IN ('STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT', 'SALE', 'RETURN')",
-                  "name": "stockMovement_type_check_9d26df34",
+                  "expression": "\"type\" IN ('STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT', 'PRODUCTION', 'SALE', 'RETURN')",
+                  "name": "stockMovement_type_check_bbeb80a5",
                   "prefix": "stockMovement_type_check"
                 }
               ],
@@ -6021,6 +6025,7 @@
                 "TRANSFER_OUT",
                 "TRANSFER_IN",
                 "ADJUSTMENT",
+                "PRODUCTION",
                 "SALE",
                 "RETURN"
               ]
@@ -6063,7 +6068,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "5add5679f17ba2413d019e70b8efeb76e4d88f1b39601c62966a34a796c49aae"
+    "storageHash": "2bf42c09f96ce1632c493dd4b64e79fe09c13506b4daf2ba41fafb279bdec86d"
   },
   "execution": {
     "executionHash": "290b2a01898e0e363bf242b862df34542ea5c0e15a2fcbb797a36a6571f6de38",

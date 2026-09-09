@@ -1,0 +1,86 @@
+[
+  {
+    "id": "dropCheckConstraint.stockMovement.stockMovement_type_check_9d26df34",
+    "label": "Drop check constraint \"stockMovement_type_check_9d26df34\" on \"stockMovement\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "checkConstraint",
+        "name": "stockMovement_type_check_9d26df34",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"stockMovement_type_check_9d26df34\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_type_check_9d26df34",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop check constraint \"stockMovement_type_check_9d26df34\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" DROP CONSTRAINT \"stockMovement_type_check_9d26df34\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"stockMovement_type_check_9d26df34\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_type_check_9d26df34",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "checkConstraint.stockMovement.stockMovement_type_check_bbeb80a5",
+    "label": "Add check constraint \"stockMovement_type_check_bbeb80a5\" on \"stockMovement\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "checkConstraint",
+        "name": "stockMovement_type_check_bbeb80a5",
+        "table": "stockMovement"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"stockMovement_type_check_bbeb80a5\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_type_check_bbeb80a5",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add check constraint \"stockMovement_type_check_bbeb80a5\"",
+        "sql": "ALTER TABLE \"public\".\"stockMovement\" ADD CONSTRAINT \"stockMovement_type_check_bbeb80a5\" CHECK (\"type\" IN ('STOCK_IN', 'CONSUMPTION', 'MANUAL_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'ADJUSTMENT', 'PRODUCTION', 'SALE', 'RETURN'))"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"stockMovement_type_check_bbeb80a5\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "stockMovement_type_check_bbeb80a5",
+          "public",
+          "\"public\".\"stockMovement\""
+        ]
+      }
+    ]
+  }
+]

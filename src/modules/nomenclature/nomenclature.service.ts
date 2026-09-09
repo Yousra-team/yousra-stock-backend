@@ -228,36 +228,82 @@ export async function getRecipeNode(companyId: string, itemId: string): Promise<
 }
 
 export interface ExplodedRequirements {
-  /** Active nomenclature id of the top finished item — stamped on every movement. */
-  topNomenclatureId: string;
-  /** rawIngredientItemId -> total quantity needed, in that ingredient's base unit. */
+  /**
+   * Active nomenclature id of the top item, if it has one — stamped on every
+   * movement so a consumption can be traced back to the recipe it served.
+   * Null only when the top item is itself stock-tracked with no recipe (it is
+   * then consumed directly).
+   */
+  topNomenclatureId: string | null;
+  /** stockedItemId -> total quantity needed, in that item's base unit. */
   requirements: Map<string, number>;
 }
 
 /**
- * Recursively expands `quantity` units of `finishedItemId` into the raw
- * ingredient quantities that must be consumed, following each ingredient's own
- * active recipe until every branch bottoms out at a stock-tracked leaf.
+ * Expands `quantity` units of `itemId` into the quantities of **stock-tracked
+ * items** that must be drawn down.
+ *
+ * The explosion **stops at the first stock-tracked item on each branch** — raw
+ * materials and semi-finished goods alike. A semi-finished good (e.g. "pâte à
+ * farine") carries a recipe that describes how a *production run* builds it,
+ * not how a parent order consumes it: the stock on hand was already produced
+ * from flour in the past, so a pizza order draws down the dough, never the
+ * flour behind it. Only a non-stock-tracked "phantom" (assembled fresh every
+ * time, never held) is followed through to its own components.
  *
  * Throws:
- * - `RecipeMissingError` — the top item has no active recipe.
+ * - `RecipeMissingError` — the top item is not stock-tracked and has no
+ *   active recipe (nothing to resolve it to).
  * - `ConflictError` — a recipe cycle, nesting past `MAX_RECIPE_DEPTH`, a
- *   leaf ingredient that is not stock-tracked, or a unit-family mismatch
- *   between a recipe line and its ingredient's base unit.
+ *   phantom sub-assembly with no recipe, or a unit-family mismatch between a
+ *   recipe line and its component's base unit.
  */
 export async function explodeRequirements(
   companyId: string,
-  finishedItemId: string,
+  itemId: string,
   quantity: number,
 ): Promise<ExplodedRequirements> {
-  const top = await getRecipeNode(companyId, finishedItemId);
-  if (top.activeNomenclatureId === null) {
-    throw new RecipeMissingError(`No active recipe for item(s): ${finishedItemId}`);
+  const top = await getRecipeNode(companyId, itemId);
+  if (!top.item.isStockable && top.activeNomenclatureId === null) {
+    throw new RecipeMissingError(`No active recipe for item(s): ${itemId}`);
   }
 
   const requirements = new Map<string, number>();
-  await accumulate(companyId, top, quantity, requirements, new Set<string>(), 0);
+  await accumulate(companyId, top, quantity, requirements, new Set<string>(), 0, false);
   return { topNomenclatureId: top.activeNomenclatureId, requirements };
+}
+
+export interface ProductionInputs {
+  /** The active recipe the batch is built from. */
+  nomenclatureId: string;
+  /** stockedItemId -> quantity consumed to build the batch, in that item's base unit. */
+  inputs: Map<string, number>;
+}
+
+/**
+ * Resolve the stock-tracked inputs consumed when a **production run** builds
+ * `quantity` units of `itemId` from its active recipe. Unlike consumption, the
+ * top item's recipe is always expanded (that is the point of a production run);
+ * the explosion then stops at stock-tracked components exactly as
+ * `explodeRequirements` does — a sub-recipe is only followed when its item is a
+ * non-stocked phantom.
+ *
+ * Throws `ConflictError` if `itemId` has no active recipe, plus the same
+ * cycle / depth / phantom / unit-family errors as `explodeRequirements`.
+ */
+export async function explodeProductionInputs(
+  companyId: string,
+  itemId: string,
+  quantity: number,
+): Promise<ProductionInputs> {
+  const top = await getRecipeNode(companyId, itemId);
+  if (top.activeNomenclatureId === null) {
+    throw new ConflictError(`"${top.item.name}" has no active recipe to produce from`);
+  }
+
+  const inputs = new Map<string, number>();
+  await accumulate(companyId, top, quantity, inputs, new Set<string>(), 0, true);
+  return { nomenclatureId: top.activeNomenclatureId, inputs };
 }
 
 async function accumulate(
@@ -267,22 +313,28 @@ async function accumulate(
   acc: Map<string, number>,
   path: Set<string>,
   depth: number,
+  /** True only for a production run's entry item: expand its recipe even though it is stock-tracked. */
+  expandStockedTop: boolean,
 ): Promise<void> {
-  if (node.activeNomenclatureId === null) {
-    // Raw leaf ingredient.
-    if (!node.item.isStockable) {
-      throw new ConflictError(
-        `Recipe ingredient "${node.item.name}" has no recipe and is not stock-tracked`,
-      );
-    }
+  const forceExpand = expandStockedTop && depth === 0;
+
+  // Stop at any stock-tracked item (raw material, or an already-produced
+  // semi-finished good). Its recipe, if any, describes how a production run
+  // BUILDS it — not how a parent consumes it — so we never follow it here.
+  if (!forceExpand && node.item.isStockable) {
     acc.set(node.item.id, (acc.get(node.item.id) ?? 0) + quantity);
     return;
   }
 
-  if (path.has(node.item.id)) {
+  if (node.activeNomenclatureId === null) {
+    // Not stock-tracked and no recipe → a phantom sub-assembly that can't be resolved.
     throw new ConflictError(
-      `Recipe cycle detected: ${[...path, node.item.id].join(' -> ')}`,
+      `"${node.item.name}" is not stock-tracked and has no active recipe — cannot resolve it to consumable stock`,
     );
+  }
+
+  if (path.has(node.item.id)) {
+    throw new ConflictError(`Recipe cycle detected: ${[...path, node.item.id].join(' -> ')}`);
   }
   if (depth >= MAX_RECIPE_DEPTH) {
     throw new ConflictError(`Recipe nesting exceeds ${MAX_RECIPE_DEPTH} levels at "${node.item.name}"`);
@@ -297,6 +349,6 @@ async function accumulate(
         : (await convertUnits(line.unitId, line.subItemBaseUnitId, perParent)).result;
 
     const childNode = await getRecipeNode(companyId, line.subItemId);
-    await accumulate(companyId, childNode, inChildBase, acc, nextPath, depth + 1);
+    await accumulate(companyId, childNode, inChildBase, acc, nextPath, depth + 1, expandStockedTop);
   }
 }

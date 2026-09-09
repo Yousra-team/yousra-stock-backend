@@ -18,6 +18,7 @@ import {
 } from './modules/procurement/purchase-order.schema';
 import { createGoodsReceiptSchema } from './modules/procurement/goods-receipt.schema';
 import { createStockMovementSchema } from './modules/stock/stock.schema';
+import { createProductionSchema } from './modules/production/production.schema';
 import { createExternalSystemSchema } from './modules/integration/integration.schema';
 import { consumeSchema, releaseSchema } from './modules/external/external.schema';
 
@@ -49,6 +50,7 @@ const requestSchemas = {
   UpdatePurchaseOrderStatusInput: updatePurchaseOrderStatusSchema,
   CreateGoodsReceiptInput: createGoodsReceiptSchema,
   CreateStockMovementInput: createStockMovementSchema,
+  CreateProductionInput: createProductionSchema,
   CreateExternalSystemInput: createExternalSystemSchema,
   ExternalConsumeInput: consumeSchema,
   ExternalReleaseInput: releaseSchema,
@@ -393,6 +395,7 @@ const entitySchemas = {
           'TRANSFER_OUT',
           'TRANSFER_IN',
           'ADJUSTMENT',
+          'PRODUCTION',
           'SALE',
           'RETURN',
         ],

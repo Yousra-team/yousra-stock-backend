@@ -50,10 +50,17 @@ enum StockMovementType {
   TRANSFER_OUT
   TRANSFER_IN
   ADJUSTMENT
-  /// An external system (e.g. Pizzaland) confirmed a customer order — one row per
-  /// order line. Always attributed to an `ExternalSystem`, never a `User`.
+  /// A batch of a made item (finished or semi-finished) was produced: the
+  /// recipe's stocked components are drawn down as `CONSUMPTION`, and the
+  /// produced units are added with one `PRODUCTION` row (`nomenclatureId` set).
+  PRODUCTION
+  /// Reserved from the first external-integration pass (finished item held its
+  /// own stock). No longer emitted — external orders now consume recipe
+  /// components as `CONSUMPTION`. Kept because dropping an enum value is a
+  /// breaking migration and historical rows may still carry it.
   SALE
-  /// Reverses the `SALE` rows of a cancelled external order, restoring stock.
+  /// Reverses the `CONSUMPTION` (or legacy `SALE`) rows of a cancelled external
+  /// order, restoring the affected stock.
   RETURN
 }
 

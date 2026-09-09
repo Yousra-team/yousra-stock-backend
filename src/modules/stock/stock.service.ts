@@ -33,7 +33,12 @@ export interface RecordMovementParams {
 }
 
 function resolveDelta(params: RecordMovementParams): number {
-  if (params.type === 'STOCK_IN' || params.type === 'TRANSFER_IN' || params.type === 'RETURN') {
+  if (
+    params.type === 'STOCK_IN' ||
+    params.type === 'TRANSFER_IN' ||
+    params.type === 'RETURN' ||
+    params.type === 'PRODUCTION'
+  ) {
     return params.quantity;
   }
   if (

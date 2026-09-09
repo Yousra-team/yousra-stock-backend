@@ -14,6 +14,7 @@ import { catalogRouter } from './modules/catalog';
 import { nomenclatureRouter } from './modules/nomenclature';
 import { purchaseOrderRouter, procurementRouter } from './modules/procurement';
 import { stockLevelRouter, stockMovementRouter } from './modules/stock';
+import { productionRouter } from './modules/production';
 import { integrationRouter } from './modules/integration';
 import { externalRouter } from './modules/external';
 
@@ -50,6 +51,7 @@ app.use('/api/v1/purchases', purchaseOrderRouter);
 app.use('/api/v1/procurement', procurementRouter);
 app.use('/api/v1/stock-levels', stockLevelRouter);
 app.use('/api/v1/stock-movements', stockMovementRouter);
+app.use('/api/v1/production', productionRouter);
 app.use('/api/v1/integration/systems', integrationRouter);
 app.use('/api/v1/external', externalRouter);
 

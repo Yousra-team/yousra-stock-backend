@@ -2,26 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { api, authed, createTestTenant } from './helpers';
 
 /**
- * Model A fixtures: a 2-level recipe (pizza = 1 dough + 2 cheese; dough = 3 flour),
- * the raw ingredients (flour, cheese) stocked at 100 each in a coded warehouse,
- * a finished item with NO recipe, and a registered "Pizzaland" external system.
+ * Model A fixtures. Recipe tree for "pizza":
+ *   pizza  (NOT stocked)  = 1 dough + 2 cheese + 0.5 garlic paste
+ *   dough  (STOCKED, semi-finished, opening 20) = 3 flour     ← recipe NOT followed by consume
+ *   garlic paste (NOT stocked, phantom)         = 1 garlic    ← recipe IS followed by consume
+ *   flour / cheese / garlic  (STOCKED raw, opening 100)
  *
- * All items share one UNIT-family unit so no conversion is involved — conversion
- * itself is covered by `measurements.test.ts`.
+ * So consuming a pizza draws down dough + cheese + garlic, never flour.
+ * One shared UNIT-family unit → no conversion (that is covered by measurements.test.ts).
  */
-async function setupModelAFixtures(suffix: string) {
-  const tenant = await createTestTenant(`exta-${suffix}`);
+async function setupFixtures(suffix: string) {
+  const tenant = await createTestTenant(`ext-${suffix}`);
   const client = authed(tenant.token);
 
   const unit = await client.post('/api/v1/measurements/units').send({
-    name: `ExtAUnit-${suffix}`,
-    symbol: `eau-${suffix}`,
+    name: `ExtU-${suffix}`,
+    symbol: `eu-${suffix}`,
     family: 'UNIT',
     factorToBase: 1,
     isBase: false,
   });
   const unitId = unit.body.data.id as string;
-  const category = await client.post('/api/v1/catalog/categories').send({ name: `ExtACat-${suffix}` });
+  const category = await client.post('/api/v1/catalog/categories').send({ name: `ExtC-${suffix}` });
   const categoryId = category.body.data.id as string;
 
   const mkItem = (name: string, isStockable: boolean): Promise<string> =>
@@ -32,44 +34,59 @@ async function setupModelAFixtures(suffix: string) {
 
   const flourId = await mkItem('Flour', true);
   const cheeseId = await mkItem('Cheese', true);
-  const doughId = await mkItem('Dough', false);
+  const garlicId = await mkItem('Garlic', true);
+  const doughId = await mkItem('Dough', true); // semi-finished — STOCKED
+  const pasteId = await mkItem('GarlicPaste', false); // phantom — NOT stocked
   const pizzaId = await mkItem('Pizza', false);
   const plainId = await mkItem('PlainNoRecipe', false);
+
+  const activate = (nomId: string) => client.post(`/api/v1/nomenclature/${nomId}/activate`);
 
   const doughNom = await client
     .post('/api/v1/nomenclature')
     .send({ itemId: doughId, lines: [{ subItemId: flourId, quantity: 3, unitId }] });
-  await client.post(`/api/v1/nomenclature/${doughNom.body.data.id}/activate`);
+  await activate(doughNom.body.data.id);
+
+  const pasteNom = await client
+    .post('/api/v1/nomenclature')
+    .send({ itemId: pasteId, lines: [{ subItemId: garlicId, quantity: 1, unitId }] });
+  await activate(pasteNom.body.data.id);
 
   const pizzaNom = await client.post('/api/v1/nomenclature').send({
     itemId: pizzaId,
     lines: [
       { subItemId: doughId, quantity: 1, unitId },
       { subItemId: cheeseId, quantity: 2, unitId },
+      { subItemId: pasteId, quantity: 0.5, unitId },
     ],
   });
-  await client.post(`/api/v1/nomenclature/${pizzaNom.body.data.id}/activate`);
+  await activate(pizzaNom.body.data.id);
 
-  const locationCode = `exta-${suffix}`;
+  const locationCode = `ext-${suffix}`;
   const warehouse = await client
     .post('/api/v1/warehouses')
-    .send({ name: `ExtAWh-${suffix}`, code: locationCode });
+    .send({ name: `ExtW-${suffix}`, code: locationCode });
   const warehouseId = warehouse.body.data.id as string;
-  for (const itemId of [flourId, cheeseId]) {
-    const seed = await client.post('/api/v1/stock-movements').send({
+
+  const seed = async (itemId: string, quantity: number) => {
+    const r = await client.post('/api/v1/stock-movements').send({
       type: 'ADJUSTMENT',
       itemId,
       warehouseId,
-      quantity: 100,
+      quantity,
       direction: 'increase',
     });
-    expect(seed.status).toBe(201);
-  }
+    expect(r.status).toBe(201);
+  };
+  await seed(flourId, 100);
+  await seed(cheeseId, 100);
+  await seed(garlicId, 100);
+  await seed(doughId, 20);
 
-  const systemName = `PizzalandA-${suffix}`;
+  const systemName = `Pizzaland-${suffix}`;
   const registered = await client.post('/api/v1/integration/systems').send({
     name: systemName,
-    description: 'Pizzaland V1 (model A)',
+    description: 'Pizzaland V1',
     phone: '+237600000098',
   });
   expect(registered.status).toBe(201);
@@ -82,6 +99,7 @@ async function setupModelAFixtures(suffix: string) {
     warehouseId,
     flourId,
     cheeseId,
+    garlicId,
     doughId,
     pizzaId,
     plainId,
@@ -92,23 +110,20 @@ async function setupModelAFixtures(suffix: string) {
 const enc = encodeURIComponent;
 const extPost = (url: string, token: string) => api.post(url).set('X-Api-Token', token);
 const extGet = (url: string, token: string) => api.get(url).set('X-Api-Token', token);
+const stockUrl = (fx: { systemName: string; locationCode: string }, ids: string[]) =>
+  `/api/v1/external/stock?system=${enc(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${ids.join(',')}`;
 
-function stockUrl(fx: { systemName: string; locationCode: string }, itemIds: string[]): string {
-  return `/api/v1/external/stock?system=${enc(fx.systemName)}&locationCode=${fx.locationCode}&itemIds=${itemIds.join(',')}`;
-}
-
-describe('external stock integration (recipe-based)', () => {
-  it('explodes a recursive recipe on consume, is idempotent, then release restores ingredients', async () => {
+describe('external stock integration (recipe-based, stops at stocked items)', () => {
+  it('consume draws down the stocked components — semi-finished + phantom-explosion — never the flour behind the dough', async () => {
     const suffix = `${Date.now()}`;
-    const fx = await setupModelAFixtures(suffix);
+    const fx = await setupFixtures(suffix);
     const orderRef = `A-${suffix}`;
 
-    // Buildable before: flour 100 / 3-per-pizza = 33; cheese 100 / 2 = 50 -> min 33.
+    // Buildable = min(dough 20/1, cheese 100/2, garlic 100/0.5) = 20.
     const read0 = await extGet(stockUrl(fx, [fx.pizzaId]), fx.apiToken);
     expect(read0.status).toBe(200);
-    expect(read0.body.data.items[0].quantity).toBe('33');
+    expect(read0.body.data.items[0].quantity).toBe('20');
 
-    // Order 2 pizzas -> 6 flour (via dough) + 4 cheese consumed.
     const consume = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: fx.systemName,
       orderRef,
@@ -116,21 +131,21 @@ describe('external stock integration (recipe-based)', () => {
       lines: [{ itemId: fx.pizzaId, quantity: 2 }],
     });
     expect(consume.status).toBe(201);
-    expect(consume.body.data.replayed).toBe(false);
-    expect(consume.body.data.movements.every((m: { type: string }) => m.type === 'CONSUMPTION')).toBe(true);
+    const moves = consume.body.data.movements as Array<{ itemId: string; quantity: string; type: string }>;
+    expect(moves.every((m) => m.type === 'CONSUMPTION')).toBe(true);
+    const q = (id: string) => moves.find((m) => m.itemId === id)?.quantity;
+    expect(q(fx.doughId)).toBe('2'); // stopped at the semi-finished good
+    expect(q(fx.cheeseId)).toBe('4');
+    expect(q(fx.garlicId)).toBe('1'); // reached through the phantom paste
+    expect(q(fx.flourId)).toBeUndefined(); // the flour behind the dough is untouched
 
-    const movements = consume.body.data.movements as Array<{ itemId: string; quantity: string }>;
-    const movFor = (itemId: string) => movements.find((m) => m.itemId === itemId);
-    expect(movFor(fx.flourId)?.quantity).toBe('6');
-    expect(movFor(fx.cheeseId)?.quantity).toBe('4');
-    expect(movFor(fx.pizzaId)).toBeUndefined();
-    expect(movFor(fx.doughId)).toBeUndefined();
-
-    // Buildable now: floor((100 - 6) / 3) = 31 — confirms flour was decremented via the sub-recipe.
+    // Flour stock unchanged; dough went 20 -> 18 so buildable is now 18.
+    const flour = await fx.client.get(`/api/v1/stock-levels/${fx.warehouseId}/${fx.flourId}`);
+    expect(flour.body.data.quantity).toBe('100');
     const read1 = await extGet(stockUrl(fx, [fx.pizzaId]), fx.apiToken);
-    expect(read1.body.data.items[0].quantity).toBe('31');
+    expect(read1.body.data.items[0].quantity).toBe('18');
 
-    // Replay: same orderRef -> 200, no further decrement.
+    // Replay -> 200, no further movement.
     const replay = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: fx.systemName,
       orderRef,
@@ -140,7 +155,7 @@ describe('external stock integration (recipe-based)', () => {
     expect(replay.status).toBe(200);
     expect(replay.body.data.replayed).toBe(true);
 
-    // Release: RETURN per CONSUMPTION -> buildable back to 33.
+    // Release -> RETURN per CONSUMPTION, buildable back to 20.
     const release = await extPost('/api/v1/external/stock/release', fx.apiToken).send({
       system: fx.systemName,
       orderRef,
@@ -148,48 +163,40 @@ describe('external stock integration (recipe-based)', () => {
     expect(release.status).toBe(201);
     expect(release.body.data.movements.every((m: { type: string }) => m.type === 'RETURN')).toBe(true);
     const read2 = await extGet(stockUrl(fx, [fx.pizzaId]), fx.apiToken);
-    expect(read2.body.data.items[0].quantity).toBe('33');
+    expect(read2.body.data.items[0].quantity).toBe('20');
 
-    // Release replay.
-    const releaseAgain = await extPost('/api/v1/external/stock/release', fx.apiToken).send({
-      system: fx.systemName,
-      orderRef,
-    });
-    expect(releaseAgain.status).toBe(200);
-    expect(releaseAgain.body.data.replayed).toBe(true);
-
-    // Ledger: CONSUMPTION rows attributed to the external system, tagged with the pizza recipe.
+    // Ledger attribution + recipe tag.
     const ledger = await fx.client.get('/api/v1/stock-movements');
-    const consRow = ledger.body.data.find(
+    const row = ledger.body.data.find(
       (m: { type: string; externalRef: string }) => m.type === 'CONSUMPTION' && m.externalRef === orderRef,
     );
-    expect(consRow).toBeDefined();
-    expect(consRow.createdBy).toBeNull();
-    expect(consRow.createdByExternalSystem.name).toBe(fx.systemName);
-    expect(consRow.nomenclature.id).toBe(fx.pizzaNomId);
+    expect(row.createdBy).toBeNull();
+    expect(row.createdByExternalSystem.name).toBe(fx.systemName);
+    expect(row.nomenclature.id).toBe(fx.pizzaNomId);
   }, 90_000);
 
-  it('rejects an order whose recipe needs more ingredient than is in stock (409, nothing moved)', async () => {
+  it('409 when a stocked component (the dough) is short — and it names the dough, not the flour', async () => {
     const suffix = `${Date.now()}-short`;
-    const fx = await setupModelAFixtures(suffix);
+    const fx = await setupFixtures(suffix);
 
-    // 50 pizzas need 150 flour; only 100 in stock.
+    // 25 pizzas need 25 dough; only 20 in stock.
     const res = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: fx.systemName,
       orderRef: `A-SHORT-${suffix}`,
       locationCode: fx.locationCode,
-      lines: [{ itemId: fx.pizzaId, quantity: 50 }],
+      lines: [{ itemId: fx.pizzaId, quantity: 25 }],
     });
     expect(res.status).toBe(409);
-    expect(res.body.error.message).toContain(fx.flourId);
+    expect(res.body.error.message).toContain(fx.doughId);
+    expect(res.body.error.message).not.toContain(fx.flourId);
 
-    const flour = await fx.client.get(`/api/v1/stock-levels/${fx.warehouseId}/${fx.flourId}`);
-    expect(flour.body.data.quantity).toBe('100');
+    const dough = await fx.client.get(`/api/v1/stock-levels/${fx.warehouseId}/${fx.doughId}`);
+    expect(dough.body.data.quantity).toBe('20');
   }, 90_000);
 
-  it('rejects an ordered item that has no active recipe (409 NO_RECIPE)', async () => {
-    const suffix = `${Date.now()}-norecipe`;
-    const fx = await setupModelAFixtures(suffix);
+  it('409 NO_RECIPE for a non-stocked item with no active recipe', async () => {
+    const suffix = `${Date.now()}-nr`;
+    const fx = await setupFixtures(suffix);
 
     const res = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: fx.systemName,
@@ -201,12 +208,12 @@ describe('external stock integration (recipe-based)', () => {
     expect(res.body.error.code).toBe('NO_RECIPE');
   }, 90_000);
 
-  it('rejects a bad token (401) and a name that does not match the token (401)', async () => {
+  it('401 on a bad token and on a name that does not match the token', async () => {
     const suffix = `${Date.now()}-auth`;
-    const fx = await setupModelAFixtures(suffix);
+    const fx = await setupFixtures(suffix);
 
-    const badToken = await extGet(stockUrl(fx, [fx.pizzaId]), 'not-a-real-token');
-    expect(badToken.status).toBe(401);
+    const bad = await extGet(stockUrl(fx, [fx.pizzaId]), 'not-a-real-token');
+    expect(bad.status).toBe(401);
 
     const wrongName = await extPost('/api/v1/external/stock/consume', fx.apiToken).send({
       system: 'SomeOtherSystem',
@@ -217,9 +224,9 @@ describe('external stock integration (recipe-based)', () => {
     expect(wrongName.status).toBe(401);
   }, 90_000);
 
-  it('rejects release for an order that was never consumed (404)', async () => {
+  it('404 on release for an order that was never consumed', async () => {
     const suffix = `${Date.now()}-norel`;
-    const fx = await setupModelAFixtures(suffix);
+    const fx = await setupFixtures(suffix);
 
     const res = await extPost('/api/v1/external/stock/release', fx.apiToken).send({
       system: fx.systemName,

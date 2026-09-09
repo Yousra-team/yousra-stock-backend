@@ -50,48 +50,48 @@ function aggregateLines(lines: Array<{ itemId: string; quantity: number }>): Map
   return byItem;
 }
 
-/** One `CONSUMPTION` movement to write: an ingredient, a quantity, the recipe it came from. */
+/** One `CONSUMPTION` movement to write: a stocked item, a quantity, the recipe it served (if any). */
 interface PlannedConsumption {
   itemId: string;
   quantity: number;
-  nomenclatureId: string;
+  nomenclatureId: string | null;
 }
 
 export async function getExternalStock(ctx: ExternalSystemContext, query: ExternalStockQuery) {
   assertSystemName(ctx, query.system);
   const warehouse = await getWarehouseByCode(ctx.companyId, query.locationCode);
 
-  // Resolve each queried item to its recipe (or "it's a raw ingredient"), then
-  // gather every raw item id we need a stock number for in one batch.
+  // A stock-tracked item (raw or semi-finished) reports its own on-hand stock.
+  // A non-stocked finished product reports its buildable count from its recipe.
   const resolved = await Promise.all(
     query.itemIds.map(async (id) => {
       const node = await getRecipeNode(ctx.companyId, id);
       const exploded =
-        node.activeNomenclatureId === null
-          ? null
-          : await explodeRequirements(ctx.companyId, node.item.id, 1);
+        !node.item.isStockable && node.activeNomenclatureId !== null
+          ? await explodeRequirements(ctx.companyId, node.item.id, 1)
+          : null;
       return { node, exploded };
     }),
   );
 
-  const rawIds = new Set<string>();
+  const stockIds = new Set<string>();
   for (const { node, exploded } of resolved) {
-    if (exploded === null) rawIds.add(node.item.id);
-    else for (const id of exploded.requirements.keys()) rawIds.add(id);
+    if (exploded === null) stockIds.add(node.item.id);
+    else for (const id of exploded.requirements.keys()) stockIds.add(id);
   }
   const onHand = new Map(
-    (await getStockQuantities(warehouse.id, [...rawIds])).map((q) => [q.itemId, Number(q.quantity)]),
+    (await getStockQuantities(warehouse.id, [...stockIds])).map((q) => [q.itemId, Number(q.quantity)]),
   );
 
   const items = resolved.map(({ node, exploded }) => {
     if (exploded === null) {
       return { itemId: node.item.id, quantity: (onHand.get(node.item.id) ?? 0).toString() };
     }
-    // Buildable = how many whole units the scarcest ingredient allows.
+    // Buildable = how many whole units the scarcest component allows.
     let buildable = Infinity;
-    for (const [ingId, perUnit] of exploded.requirements) {
+    for (const [componentId, perUnit] of exploded.requirements) {
       if (perUnit <= 0) continue;
-      buildable = Math.min(buildable, Math.floor((onHand.get(ingId) ?? 0) / perUnit));
+      buildable = Math.min(buildable, Math.floor((onHand.get(componentId) ?? 0) / perUnit));
     }
     return { itemId: node.item.id, quantity: (Number.isFinite(buildable) ? buildable : 0).toString() };
   });
@@ -114,45 +114,49 @@ export async function consumeStock(ctx: ExternalSystemContext, input: ConsumeInp
     return { orderRef: input.orderRef, replayed: true, movements: existing.map(toMovementResult) };
   }
 
-  // Hard cutover: every ordered finished item must have an active recipe.
+  // Hard cutover: a non-stocked finished item must have an active recipe. (A
+  // stock-tracked item with no recipe is fine — it's consumed directly.)
   const nodes = await Promise.all(finishedItemIds.map((id) => getRecipeNode(ctx.companyId, id)));
-  const noRecipe = nodes.filter((n) => n.activeNomenclatureId === null).map((n) => n.item.id);
+  const noRecipe = nodes
+    .filter((n) => !n.item.isStockable && n.activeNomenclatureId === null)
+    .map((n) => n.item.id);
   if (noRecipe.length > 0) {
     throw new RecipeMissingError(`No active recipe for item(s): ${noRecipe.join(', ')}`);
   }
 
-  // Explode every line to ingredient requirements. One planned CONSUMPTION per
-  // (finished item, ingredient); `totalPerIngredient` sums across the whole
-  // order for the up-front sufficiency check.
+  // Explode every line to the stocked items it draws down (stops at raw
+  // materials AND already-produced semi-finished goods). One planned
+  // CONSUMPTION per (finished item, stocked component); `totalPerComponent`
+  // sums across the whole order for the up-front sufficiency check.
   const planned: PlannedConsumption[] = [];
-  const totalPerIngredient = new Map<string, number>();
+  const totalPerComponent = new Map<string, number>();
   for (const [finishedItemId, qty] of aggregated) {
     const { topNomenclatureId, requirements } = await explodeRequirements(
       ctx.companyId,
       finishedItemId,
       qty,
     );
-    for (const [ingId, need] of requirements) {
-      planned.push({ itemId: ingId, quantity: need, nomenclatureId: topNomenclatureId });
-      totalPerIngredient.set(ingId, (totalPerIngredient.get(ingId) ?? 0) + need);
+    for (const [componentId, need] of requirements) {
+      planned.push({ itemId: componentId, quantity: need, nomenclatureId: topNomenclatureId });
+      totalPerComponent.set(componentId, (totalPerComponent.get(componentId) ?? 0) + need);
     }
   }
 
-  // Friendly pre-check so the 409 can name the short ingredients. The
+  // Friendly pre-check so the 409 can name the short components. The
   // transaction below is still the real guard (recordStockMovement rejects a
   // negative level).
   const onHand = new Map(
-    (await getStockQuantities(warehouse.id, [...totalPerIngredient.keys()])).map((q) => [
+    (await getStockQuantities(warehouse.id, [...totalPerComponent.keys()])).map((q) => [
       q.itemId,
       Number(q.quantity),
     ]),
   );
-  const short = [...totalPerIngredient]
-    .filter(([ingId, need]) => (onHand.get(ingId) ?? 0) < need)
-    .map(([ingId]) => ingId);
+  const short = [...totalPerComponent]
+    .filter(([componentId, need]) => (onHand.get(componentId) ?? 0) < need)
+    .map(([componentId]) => componentId);
   if (short.length > 0) {
     throw new ConflictError(
-      `Insufficient stock at "${input.locationCode}" for ingredient(s): ${short.join(', ')}`,
+      `Insufficient stock at "${input.locationCode}" for item(s): ${short.join(', ')}`,
     );
   }
 
@@ -165,9 +169,9 @@ export async function consumeStock(ctx: ExternalSystemContext, input: ConsumeInp
           itemId: p.itemId,
           warehouseId: warehouse.id,
           quantity: p.quantity,
-          nomenclatureId: p.nomenclatureId,
           createdByExternalSystemId: ctx.id,
           externalRef: input.orderRef,
+          ...(p.nomenclatureId ? { nomenclatureId: p.nomenclatureId } : {}),
         }),
       );
     }
